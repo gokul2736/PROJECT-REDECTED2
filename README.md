@@ -1,4 +1,14 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+| Time          |   Duration | What happens                           |
+| ------------- | ---------: | -------------------------------------- |
+| **1:00–1:10** |     10 min | Briefing / rules / team readiness      |
+| **1:10–1:55** |     45 min | **Round 1 — The Crime Scene**          |
+| **1:55–2:40** |     45 min | **Round 2 — Follow the Trail**         |
+| **2:40–2:55** | **15 min** | **BREAK**                              |
+| **2:55–3:35** |     40 min | **Round 3 — The Interrogation**        |
+| **3:35–4:10** |     35 min | **Round 4 — The Final Verdict**        |
+| **4:10–4:20** |     10 min | Judges / score finalization / closing  |
+| **4:20–4:30** |     10 min | Buffer / winner announcement / wrap-up |
+
 
 ## Getting Started
 
