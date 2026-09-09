@@ -1,3 +1,4 @@
+/* app/admin/page.tsx */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -28,20 +29,105 @@ type Team = {
   members: Member[];
 };
 
+type RoundSummary = {
+  round_number: number;
+  round_name: string;
+  status: string;
+  max_score: number;
+  duration_seconds: number;
+  started_at: string | null;
+  ended_at: string | null;
+  teams_started: number;
+  teams_completed: number;
+  average_score: number | null;
+  highest_score: number | null;
+};
+
+type LiveResult = {
+  team_id: string;
+  team_name: string;
+  team_code: string;
+  current_round: number;
+  team_status: string;
+  round1_score: number;
+  round2_score: number;
+  round3_score: number;
+  round4_score: number;
+  total_score: number;
+};
+
+const ROUND_META: Record<number, { label: string; subtitle: string; color: string; available: boolean }> = {
+  1: {
+    label: "THE CRIME SCENE",
+    subtitle: "Evidence investigation",
+    color: "yellow",
+    available: true,
+  },
+  2: {
+    label: "FOLLOW THE TRAIL",
+    subtitle: "Lead selection & reasoning",
+    color: "cyan",
+    available: true,
+  },
+  3: {
+    label: "THE INTERROGATION",
+    subtitle: "Classification pending",
+    color: "purple",
+    available: false,
+  },
+  4: {
+    label: "THE FINAL VERDICT",
+    subtitle: "Classification pending",
+    color: "red",
+    available: false,
+  },
+};
+
+function formatScore(value: number | null | undefined) {
+  return value == null ? "—" : Number(value).toFixed(1).replace(".0", "");
+}
+
+function formatDuration(seconds: number) {
+  if (!seconds) return "—";
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  return `${minutes}m ${String(remaining).padStart(2, "0")}s`;
+}
+
+function statusClass(status: string) {
+  const value = status.toUpperCase();
+
+  if (value === "LIVE" || value === "ACTIVE") {
+    return "text-green-400 border-green-500/20 bg-green-500/[0.05]";
+  }
+
+  if (value === "COMPLETED" || value === "FINALIZED") {
+    return "text-blue-300 border-blue-500/20 bg-blue-500/[0.05]";
+  }
+
+  if (value === "LOCKED") {
+    return "text-white/50 border-white/10 bg-white/[0.03]";
+  }
+
+  return "text-yellow-400 border-yellow-500/20 bg-yellow-500/[0.04]";
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [teams, setTeams] = useState<Team[]>([]);
+  const [rounds, setRounds] = useState<RoundSummary[]>([]);
+  const [liveResults, setLiveResults] = useState<LiveResult[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState("");
   const [notice, setNotice] = useState("");
-
   const [search, setSearch] = useState("");
 
   const [moveMemberId, setMoveMemberId] = useState("");
@@ -51,9 +137,16 @@ export default function AdminDashboard() {
     checkAdmin();
   }, []);
 
-  // =========================================================
-  // ADMIN VERIFICATION
-  // =========================================================
+  useEffect(() => {
+    if (!loading) {
+      const refresh = window.setInterval(() => {
+        loadDashboardData();
+        loadTeams();
+      }, 10000);
+
+      return () => window.clearInterval(refresh);
+    }
+  }, [loading]);
 
   const checkAdmin = async () => {
     try {
@@ -73,8 +166,6 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Check whether logged-in Supabase user exists
-      // in the public admins table.
       const { data: admin, error: adminError } = await supabase
         .from("admins")
         .select("id, email, role")
@@ -82,42 +173,27 @@ export default function AdminDashboard() {
         .maybeSingle();
 
       if (adminError) {
-        console.error("Admin verification error:", adminError);
-
-        setErrorMessage(
-          "Admin verification failed: " + adminError.message
-        );
+        setErrorMessage("Admin verification failed: " + adminError.message);
         setLoading(false);
         return;
       }
 
-      // Logged in, but not an administrator.
       if (!admin) {
         await supabase.auth.signOut();
         router.replace("/admin/login");
         return;
       }
 
-      // Admin verified.
       setEmail(session.user.email || admin.email || "");
 
-      await loadTeams();
-
+      await Promise.all([loadTeams(), loadDashboardData()]);
       setLoading(false);
     } catch (error) {
-      console.error("Unexpected admin error:", error);
-
-      setErrorMessage(
-        "An unexpected error occurred while loading the dashboard."
-      );
-
+      console.error(error);
+      setErrorMessage("An unexpected error occurred while loading the dashboard.");
       setLoading(false);
     }
   };
-
-  // =========================================================
-  // LOAD TEAMS
-  // =========================================================
 
   const loadTeams = async () => {
     setTeamsLoading(true);
@@ -126,11 +202,7 @@ export default function AdminDashboard() {
 
     if (error) {
       console.error("Team load error:", error);
-
-      setErrorMessage(
-        "Unable to load teams: " + error.message
-      );
-
+      setErrorMessage("Unable to load teams: " + error.message);
       setTeamsLoading(false);
       return;
     }
@@ -139,26 +211,37 @@ export default function AdminDashboard() {
     setTeamsLoading(false);
   };
 
-  // =========================================================
-  // LOGOUT
-  // =========================================================
+  const loadDashboardData = async () => {
+    setDashboardLoading(true);
+
+    const [roundResponse, resultResponse] = await Promise.all([
+      supabase.rpc("admin_get_round_dashboard"),
+      supabase.rpc("admin_get_live_results"),
+    ]);
+
+    if (roundResponse.error) {
+      console.error("Round dashboard error:", roundResponse.error);
+    }
+
+    if (resultResponse.error) {
+      console.error("Live results error:", resultResponse.error);
+    }
+
+    setRounds((roundResponse.data || []) as RoundSummary[]);
+    setLiveResults((resultResponse.data || []) as LiveResult[]);
+    setDashboardLoading(false);
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/admin/login");
   };
 
-  // =========================================================
-  // LOCK TEAM
-  // =========================================================
-
   const handleLockTeam = async () => {
     if (!selectedTeam) return;
 
     if (selectedTeam.members.length < 2) {
-      setNotice(
-        "A team needs at least 2 members before it can be locked."
-      );
+      setNotice("A team needs at least 2 members before it can be locked.");
       return;
     }
 
@@ -176,31 +259,20 @@ export default function AdminDashboard() {
     });
 
     if (error) {
-      console.error("Lock team error:", error);
       setNotice(error.message);
       setActionLoading(false);
       return;
     }
 
     setNotice("Team locked successfully.");
-
     await loadTeams();
 
     setSelectedTeam((current) =>
-      current
-        ? {
-            ...current,
-            status: "LOCKED",
-          }
-        : null
+      current ? { ...current, status: "LOCKED" } : null
     );
 
     setActionLoading(false);
   };
-
-  // =========================================================
-  // REMOVE MEMBER
-  // =========================================================
 
   const handleRemoveMember = async (member: Member) => {
     if (!selectedTeam) return;
@@ -219,23 +291,16 @@ export default function AdminDashboard() {
     });
 
     if (error) {
-      console.error("Remove member error:", error);
       setNotice(error.message);
       setActionLoading(false);
       return;
     }
 
     setNotice(`${member.name} removed.`);
-
     await loadTeams();
-
     setSelectedTeam(null);
     setActionLoading(false);
   };
-
-  // =========================================================
-  // MOVE MEMBER
-  // =========================================================
 
   const handleMoveMember = async () => {
     if (!moveMemberId || !targetTeamId) {
@@ -252,26 +317,19 @@ export default function AdminDashboard() {
     });
 
     if (error) {
-      console.error("Move member error:", error);
       setNotice(error.message);
       setActionLoading(false);
       return;
     }
 
     setNotice("Member moved successfully.");
-
     await loadTeams();
 
     setMoveMemberId("");
     setTargetTeamId("");
     setSelectedTeam(null);
-
     setActionLoading(false);
   };
-
-  // =========================================================
-  // SEARCH
-  // =========================================================
 
   const filteredTeams = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -291,22 +349,13 @@ export default function AdminDashboard() {
     });
   }, [teams, search]);
 
-  // =========================================================
-  // STATS
-  // =========================================================
-
   const totalMembers = teams.reduce(
     (sum, team) => sum + team.members.length,
     0
   );
 
-  const formingTeams = teams.filter(
-    (team) => team.status === "FORMING"
-  ).length;
-
-  const lockedTeams = teams.filter(
-    (team) => team.status === "LOCKED"
-  ).length;
+  const formingTeams = teams.filter((team) => team.status === "FORMING").length;
+  const lockedTeams = teams.filter((team) => team.status === "LOCKED").length;
 
   const availableMoveTargets = teams.filter(
     (team) =>
@@ -315,9 +364,12 @@ export default function AdminDashboard() {
       team.members.length < 4
   );
 
-  // =========================================================
-  // LOADING
-  // =========================================================
+  const roundByNumber = new Map(rounds.map((round) => [round.round_number, round]));
+
+  const highestLiveScore =
+    liveResults.length > 0
+      ? Math.max(...liveResults.map((team) => Number(team.total_score || 0)))
+      : 0;
 
   if (loading) {
     return (
@@ -326,22 +378,14 @@ export default function AdminDashboard() {
           <p className="text-yellow-400 text-xs uppercase tracking-[0.3em]">
             PROJECT: REDACTED²
           </p>
-
           <h1 className="mt-3 text-2xl font-semibold">
             Verifying Admin Clearance
           </h1>
-
-          <p className="mt-2 text-sm text-white/40">
-            Please wait...
-          </p>
+          <p className="mt-2 text-sm text-white/40">Please wait...</p>
         </div>
       </main>
     );
   }
-
-  // =========================================================
-  // ERROR
-  // =========================================================
 
   if (errorMessage) {
     return (
@@ -350,15 +394,10 @@ export default function AdminDashboard() {
           <p className="text-yellow-400 text-xs uppercase tracking-[0.25em]">
             Access Error
           </p>
-
           <h1 className="text-2xl font-semibold mt-3">
             Admin Dashboard Error
           </h1>
-
-          <p className="mt-4 text-red-400 text-sm">
-            {errorMessage}
-          </p>
-
+          <p className="mt-4 text-red-400 text-sm">{errorMessage}</p>
           <button
             onClick={() => router.replace("/admin/login")}
             className="mt-6 w-full rounded-xl bg-white text-black py-3 font-semibold hover:bg-yellow-300 transition"
@@ -370,122 +409,211 @@ export default function AdminDashboard() {
     );
   }
 
-  // =========================================================
-  // DASHBOARD
-  // =========================================================
-
   return (
     <main className="min-h-screen bg-black text-white">
-      {/* HEADER */}
       <header className="border-b border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between gap-5">
           <div>
             <p className="text-yellow-400 text-xs uppercase tracking-[0.3em]">
               PROJECT: REDACTED²
             </p>
-
             <h1 className="text-2xl font-semibold mt-1">
               Admin Control Center
             </h1>
-
-            <p className="text-sm text-white/40 mt-1">
-              {email}
-            </p>
+            <p className="text-sm text-white/40 mt-1">{email}</p>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="border border-white/15 rounded-lg px-4 py-2 text-sm hover:bg-white hover:text-black transition"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                loadDashboardData();
+                loadTeams();
+              }}
+              className="border border-white/15 rounded-lg px-4 py-2 text-sm hover:bg-white hover:text-black transition"
+            >
+              Refresh
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="border border-white/15 rounded-lg px-4 py-2 text-sm hover:bg-white hover:text-black transition"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* STATS */}
-        <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+        {/* TOP STATS */}
+        <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
             <p className="text-xs uppercase tracking-widest text-white/40">
               Teams
             </p>
-
-            <p className="text-3xl font-semibold mt-2">
-              {teams.length}
-            </p>
+            <p className="text-3xl font-semibold mt-2">{teams.length}</p>
           </div>
 
           <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
             <p className="text-xs uppercase tracking-widest text-white/40">
               Participants
             </p>
+            <p className="text-3xl font-semibold mt-2">{totalMembers}</p>
+          </div>
 
-            <p className="text-3xl font-semibold mt-2">
-              {totalMembers}
+          <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
+            <p className="text-xs uppercase tracking-widest text-white/40">
+              Live Teams
+            </p>
+            <p className="text-3xl font-semibold mt-2 text-green-400">
+              {liveResults.filter((team) => team.current_round > 0).length}
             </p>
           </div>
 
           <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
             <p className="text-xs uppercase tracking-widest text-white/40">
-              Forming
+              Top Live Score
             </p>
-
             <p className="text-3xl font-semibold mt-2 text-yellow-400">
-              {formingTeams}
-            </p>
-          </div>
-
-          <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
-            <p className="text-xs uppercase tracking-widest text-white/40">
-              Locked
-            </p>
-
-            <p className="text-3xl font-semibold mt-2">
-              {lockedTeams}
+              {formatScore(highestLiveScore)}
             </p>
           </div>
         </section>
 
-        {/* COMMON CASE */}
-        <section className="border border-yellow-500/20 bg-[#0d0d0a] rounded-2xl p-6 mb-8">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">
-                Case Control
-              </p>
-
-              <h2 className="text-xl font-semibold mt-2">
-                Common Investigation Case
-              </h2>
-
-              <p className="text-sm text-white/40 mt-1">
-                All locked teams will receive the same case.
-              </p>
-            </div>
-
-            <div className="text-right">
-              <p className="text-xs text-white/40 uppercase tracking-widest">
-                Status
-              </p>
-
-              <p className="text-sm font-semibold text-yellow-400 mt-1">
-                NOT STARTED
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* TEAM MONITOR */}
+        {/* ROUND CARDS */}
         <section>
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-5">
+          <div className="mb-5">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/40">
+              Event Control
+            </p>
+            <h2 className="text-2xl font-semibold mt-1">Rounds</h2>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map((roundNumber) => {
+              const meta = ROUND_META[roundNumber];
+              const round = roundByNumber.get(roundNumber);
+              const available = meta.available;
+
+              return (
+                <div
+                  key={roundNumber}
+                  className={`rounded-2xl border p-6 ${
+                    available
+                      ? "border-white/10 bg-[#0b0b0b]"
+                      : "border-white/5 bg-[#080808] opacity-75"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.25em] text-white/35">
+                        Round {roundNumber}
+                      </p>
+                      <h3 className="text-xl font-semibold mt-2">
+                        {meta.label}
+                      </h3>
+                      <p className="text-sm text-white/40 mt-1">
+                        {meta.subtitle}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`text-[10px] font-semibold uppercase tracking-widest px-3 py-1.5 rounded-full border ${
+                        !available
+                          ? "text-white/40 border-white/10 bg-white/[0.03]"
+                          : statusClass(round?.status || "NOT STARTED")
+                      }`}
+                    >
+                      {!available ? "CLASSIFY LATER" : round?.status || "NOT STARTED"}
+                    </span>
+                  </div>
+
+                  {available ? (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
+                        <div className="border border-white/8 rounded-xl p-3">
+                          <p className="text-[10px] uppercase tracking-widest text-white/30">
+                            Max
+                          </p>
+                          <p className="mt-1 font-semibold">
+                            {round?.max_score ?? (roundNumber === 1 ? 100 : 50)}
+                          </p>
+                        </div>
+
+                        <div className="border border-white/8 rounded-xl p-3">
+                          <p className="text-[10px] uppercase tracking-widest text-white/30">
+                            Duration
+                          </p>
+                          <p className="mt-1 font-semibold">
+                            {formatDuration(round?.duration_seconds || 0)}
+                          </p>
+                        </div>
+
+                        <div className="border border-white/8 rounded-xl p-3">
+                          <p className="text-[10px] uppercase tracking-widest text-white/30">
+                            Started
+                          </p>
+                          <p className="mt-1 font-semibold">
+                            {round?.teams_started ?? 0}
+                          </p>
+                        </div>
+
+                        <div className="border border-white/8 rounded-xl p-3">
+                          <p className="text-[10px] uppercase tracking-widest text-white/30">
+                            Completed
+                          </p>
+                          <p className="mt-1 font-semibold">
+                            {round?.teams_completed ?? 0}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex items-center justify-between text-sm">
+                        <span className="text-white/40">
+                          Average score
+                        </span>
+                        <span className="font-semibold">
+                          {formatScore(round?.average_score)}
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between text-sm">
+                        <span className="text-white/40">
+                          Highest score
+                        </span>
+                        <span className="font-semibold text-yellow-400">
+                          {formatScore(round?.highest_score)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-6 border border-dashed border-white/10 rounded-xl p-5">
+                      <p className="text-sm text-white/45">
+                        Round structure is not classified yet.
+                      </p>
+                      <p className="text-xs text-white/25 mt-2">
+                        This card is intentionally reserved so the dashboard
+                        does not need to be rebuilt later.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* TEAMS CARD */}
+        <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
+          <div className="px-6 py-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-white/40">
                 Operations
               </p>
-
-              <h2 className="text-2xl font-semibold mt-1">
-                Team Monitor
-              </h2>
+              <h2 className="text-2xl font-semibold mt-1">Teams</h2>
+              <p className="text-sm text-white/35 mt-1">
+                Team membership, locking and movement controls.
+              </p>
             </div>
 
             <input
@@ -496,77 +624,276 @@ export default function AdminDashboard() {
             />
           </div>
 
-          <div className="border border-white/10 rounded-2xl overflow-hidden bg-[#080808]">
-            <div className="grid grid-cols-[1fr_100px_110px_110px_30px] gap-4 px-5 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
-              <span>Team</span>
-              <span>Members</span>
-              <span>Status</span>
-              <span>Case</span>
-              <span />
+          <div className="grid sm:grid-cols-3 border-b border-white/10">
+            <div className="p-5 border-b sm:border-b-0 sm:border-r border-white/10">
+              <p className="text-xs uppercase tracking-widest text-white/35">
+                Total
+              </p>
+              <p className="text-2xl font-semibold mt-2">{teams.length}</p>
             </div>
 
-            {teamsLoading ? (
-              <div className="px-5 py-12 text-center text-white/40">
-                Loading teams...
+            <div className="p-5 border-b sm:border-b-0 sm:border-r border-white/10">
+              <p className="text-xs uppercase tracking-widest text-white/35">
+                Forming
+              </p>
+              <p className="text-2xl font-semibold mt-2 text-yellow-400">
+                {formingTeams}
+              </p>
+            </div>
+
+            <div className="p-5">
+              <p className="text-xs uppercase tracking-widest text-white/35">
+                Locked
+              </p>
+              <p className="text-2xl font-semibold mt-2 text-green-400">
+                {lockedTeams}
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[760px]">
+              <div className="grid grid-cols-[1fr_100px_110px_110px_40px] gap-4 px-6 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
+                <span>Team</span>
+                <span>Members</span>
+                <span>Status</span>
+                <span>Round</span>
+                <span />
               </div>
-            ) : filteredTeams.length === 0 ? (
-              <div className="px-5 py-12 text-center text-white/40">
-                No teams found.
-              </div>
-            ) : (
-              filteredTeams.map((team) => (
-                <button
-                  key={team.id}
-                  onClick={() => {
-                    setSelectedTeam(team);
-                    setNotice("");
-                    setMoveMemberId("");
-                    setTargetTeamId("");
-                  }}
-                  className="w-full grid grid-cols-[1fr_100px_110px_110px_30px] gap-4 px-5 py-5 text-left border-b border-white/5 last:border-b-0 hover:bg-white/[0.03] transition items-center"
-                >
-                  <div>
-                    <p className="font-semibold">
-                      {team.team_name}
-                    </p>
 
-                    <p className="text-xs text-yellow-400 mt-1 tracking-widest">
-                      {team.team_code}
-                    </p>
-                  </div>
-
-                  <p className="text-sm text-white/70">
-                    {team.members.length}/4
-                  </p>
-
-                  <span
-                    className={`text-xs font-semibold uppercase tracking-wider ${
-                      team.status === "LOCKED"
-                        ? "text-green-400"
-                        : "text-yellow-400"
-                    }`}
+              {teamsLoading ? (
+                <div className="px-6 py-12 text-center text-white/40">
+                  Loading teams...
+                </div>
+              ) : filteredTeams.length === 0 ? (
+                <div className="px-6 py-12 text-center text-white/40">
+                  No teams found.
+                </div>
+              ) : (
+                filteredTeams.map((team) => (
+                  <button
+                    key={team.id}
+                    onClick={() => {
+                      setSelectedTeam(team);
+                      setNotice("");
+                      setMoveMemberId("");
+                      setTargetTeamId("");
+                    }}
+                    className="w-full grid grid-cols-[1fr_100px_110px_110px_40px] gap-4 px-6 py-5 text-left border-b border-white/5 last:border-b-0 hover:bg-white/[0.03] transition items-center"
                   >
-                    {team.status}
-                  </span>
+                    <div>
+                      <p className="font-semibold">{team.team_name}</p>
+                      <p className="text-xs text-yellow-400 mt-1 tracking-widest">
+                        {team.team_code}
+                      </p>
+                    </div>
 
-                  <p className="text-xs text-white/50">
-                    {team.case_code || "—"}
-                  </p>
+                    <p className="text-sm text-white/70">
+                      {team.members.length}/4
+                    </p>
 
-                  <span className="text-white/30 text-lg">
-                    →
-                  </span>
-                </button>
-              ))
+                    <span
+                      className={`text-xs font-semibold uppercase tracking-wider ${
+                        team.status === "LOCKED"
+                          ? "text-green-400"
+                          : "text-yellow-400"
+                      }`}
+                    >
+                      {team.status}
+                    </span>
+
+                    <p className="text-xs text-white/50">
+                      R{team.current_round || 0}
+                    </p>
+
+                    <span className="text-white/30 text-lg">→</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* LIVE RESULTS */}
+        <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
+          <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-green-400">
+                Live
+              </p>
+              <h2 className="text-2xl font-semibold mt-1">Live Results</h2>
+              <p className="text-sm text-white/35 mt-1">
+                Current leaderboard based on saved round scores.
+              </p>
+            </div>
+
+            {dashboardLoading && (
+              <span className="text-xs text-white/30">Refreshing…</span>
             )}
           </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[850px]">
+              <div className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
+                <span>#</span>
+                <span>Team</span>
+                <span>R1</span>
+                <span>R2</span>
+                <span>R3</span>
+                <span>R4</span>
+                <span>Total</span>
+              </div>
+
+              {liveResults.length === 0 ? (
+                <div className="px-6 py-12 text-center text-white/40">
+                  No live scores yet.
+                </div>
+              ) : (
+                liveResults.map((team, index) => (
+                  <div
+                    key={team.team_id}
+                    className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-4 border-b border-white/5 last:border-b-0 items-center"
+                  >
+                    <span
+                      className={`font-semibold ${
+                        index === 0
+                          ? "text-yellow-400"
+                          : index === 1
+                          ? "text-white/70"
+                          : index === 2
+                          ? "text-orange-300"
+                          : "text-white/40"
+                      }`}
+                    >
+                      {index + 1}
+                    </span>
+
+                    <div>
+                      <p className="font-semibold">{team.team_name}</p>
+                      <p className="text-xs text-yellow-400/80 tracking-widest mt-1">
+                        {team.team_code}
+                      </p>
+                    </div>
+
+                    <span className="text-white/70">
+                      {formatScore(team.round1_score)}
+                    </span>
+
+                    <span className="text-white/70">
+                      {formatScore(team.round2_score)}
+                    </span>
+
+                    <span className="text-white/30">
+                      {team.round3_score > 0 ? formatScore(team.round3_score) : "—"}
+                    </span>
+
+                    <span className="text-white/30">
+                      {team.round4_score > 0 ? formatScore(team.round4_score) : "—"}
+                    </span>
+
+                    <span className="font-semibold text-yellow-400">
+                      {formatScore(team.total_score)}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* RESULTS */}
+        <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+          <div>
+            <p className="text-xs uppercase tracking-[0.25em] text-blue-300">
+              Scoring
+            </p>
+            <h2 className="text-2xl font-semibold mt-1">Results</h2>
+            <p className="text-sm text-white/35 mt-1">
+              Round-wise scores now, final winner calculation later.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4 mt-6">
+            {[1, 2, 3, 4].map((roundNumber) => {
+              const round = roundByNumber.get(roundNumber);
+              const available = ROUND_META[roundNumber].available;
+
+              return (
+                <div
+                  key={roundNumber}
+                  className="border border-white/10 rounded-xl p-5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-white/30">
+                        Round {roundNumber}
+                      </p>
+                      <h3 className="font-semibold mt-1">
+                        {ROUND_META[roundNumber].label}
+                      </h3>
+                    </div>
+
+                    <span
+                      className={`text-[10px] uppercase tracking-widest border rounded-full px-3 py-1.5 ${
+                        available
+                          ? statusClass(round?.status || "NOT STARTED")
+                          : "text-white/35 border-white/10"
+                      }`}
+                    >
+                      {available
+                        ? round?.status || "NOT STARTED"
+                        : "CLASSIFY LATER"}
+                    </span>
+                  </div>
+
+                  {available ? (
+                    <div className="grid grid-cols-2 gap-3 mt-5">
+                      <div>
+                        <p className="text-xs text-white/30">
+                          Average
+                        </p>
+                        <p className="mt-1 font-semibold">
+                          {formatScore(round?.average_score)}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-white/30">
+                          Highest
+                        </p>
+                        <p className="mt-1 font-semibold text-yellow-400">
+                          {formatScore(round?.highest_score)}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-5 text-sm text-white/35">
+                      Scoring schema will be added once this round is classified.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* FINAL WINNER PLACEHOLDER */}
+        <section className="border border-yellow-500/20 bg-yellow-500/[0.03] rounded-2xl p-6">
+          <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">
+            Final Results
+          </p>
+          <h2 className="text-xl font-semibold mt-2">
+            Winner calculation is reserved
+          </h2>
+          <p className="text-sm text-white/40 mt-2 max-w-2xl">
+            Once Rounds 3 and 4 are classified, the final results card can
+            calculate the official winner from all four finalized round scores
+            without changing this dashboard structure.
+          </p>
         </section>
       </div>
 
-      {/* =====================================================
-          SIDE PANEL
-         ===================================================== */}
-
+      {/* TEAM SIDE PANEL */}
       {selectedTeam && (
         <div className="fixed inset-0 z-50">
           <button
@@ -581,11 +908,9 @@ export default function AdminDashboard() {
                 <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">
                   Team Details
                 </p>
-
                 <h2 className="text-2xl font-semibold mt-2">
                   {selectedTeam.team_name}
                 </h2>
-
                 <p className="text-sm text-white/40 mt-1">
                   {selectedTeam.team_code}
                 </p>
@@ -600,13 +925,11 @@ export default function AdminDashboard() {
             </div>
 
             <div className="p-6 space-y-6">
-              {/* TEAM INFO */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="border border-white/10 rounded-xl p-4">
                   <p className="text-xs text-white/35 uppercase tracking-widest">
                     Status
                   </p>
-
                   <p
                     className={`mt-2 font-semibold ${
                       selectedTeam.status === "LOCKED"
@@ -622,7 +945,6 @@ export default function AdminDashboard() {
                   <p className="text-xs text-white/35 uppercase tracking-widest">
                     Members
                   </p>
-
                   <p className="mt-2 font-semibold">
                     {selectedTeam.members.length} / 4
                   </p>
@@ -632,7 +954,6 @@ export default function AdminDashboard() {
                   <p className="text-xs text-white/35 uppercase tracking-widest">
                     Team Code
                   </p>
-
                   <p className="mt-2 font-semibold text-yellow-400">
                     {selectedTeam.team_code}
                   </p>
@@ -640,27 +961,22 @@ export default function AdminDashboard() {
 
                 <div className="border border-white/10 rounded-xl p-4">
                   <p className="text-xs text-white/35 uppercase tracking-widest">
-                    Case
+                    Current Round
                   </p>
-
                   <p className="mt-2 font-semibold">
-                    {selectedTeam.case_code || "Common Case"}
+                    {selectedTeam.current_round
+                      ? `Round ${selectedTeam.current_round}`
+                      : "Not started"}
                   </p>
                 </div>
               </div>
 
-              {/* MEMBERS */}
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold">
-                    Members
-                  </h3>
-
+                  <h3 className="font-semibold">Members</h3>
                   <span className="text-xs text-white/35">
                     {selectedTeam.members.length} participant
-                    {selectedTeam.members.length === 1
-                      ? ""
-                      : "s"}
+                    {selectedTeam.members.length === 1 ? "" : "s"}
                   </span>
                 </div>
 
@@ -672,10 +988,7 @@ export default function AdminDashboard() {
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div>
-                          <p className="font-semibold">
-                            {member.name}
-                          </p>
-
+                          <p className="font-semibold">{member.name}</p>
                           <p className="text-sm text-white/45 mt-1">
                             {member.email}
                           </p>
@@ -684,9 +997,7 @@ export default function AdminDashboard() {
                         {selectedTeam.status === "FORMING" && (
                           <button
                             disabled={actionLoading}
-                            onClick={() =>
-                              handleRemoveMember(member)
-                            }
+                            onClick={() => handleRemoveMember(member)}
                             className="text-xs text-red-400 hover:text-red-300 disabled:opacity-40"
                           >
                             Remove
@@ -696,40 +1007,28 @@ export default function AdminDashboard() {
 
                       <div className="grid grid-cols-2 gap-3 mt-4 text-xs">
                         <div>
-                          <p className="text-white/30">
-                            College
-                          </p>
-
+                          <p className="text-white/30">College</p>
                           <p className="mt-1 text-white/70">
                             {member.college_name || "—"}
                           </p>
                         </div>
 
                         <div>
-                          <p className="text-white/30">
-                            Department
-                          </p>
-
+                          <p className="text-white/30">Department</p>
                           <p className="mt-1 text-white/70">
                             {member.department || "—"}
                           </p>
                         </div>
 
                         <div>
-                          <p className="text-white/30">
-                            Year
-                          </p>
-
+                          <p className="text-white/30">Year</p>
                           <p className="mt-1 text-white/70">
                             {member.year_of_study || "—"}
                           </p>
                         </div>
 
                         <div>
-                          <p className="text-white/30">
-                            Contact
-                          </p>
-
+                          <p className="text-white/30">Contact</p>
                           <p className="mt-1 text-white/70">
                             {member.whatsapp_number || "—"}
                           </p>
@@ -740,7 +1039,6 @@ export default function AdminDashboard() {
                 </div>
               </section>
 
-              {/* MOVE MEMBER */}
               {selectedTeam.status === "FORMING" &&
                 availableMoveTargets.length > 0 && (
                   <section className="border border-white/10 rounded-xl p-5">
@@ -748,9 +1046,7 @@ export default function AdminDashboard() {
                       Team Management
                     </p>
 
-                    <h3 className="font-semibold mt-2">
-                      Move Member
-                    </h3>
+                    <h3 className="font-semibold mt-2">Move Member</h3>
 
                     <div className="mt-4 space-y-3">
                       <select
@@ -760,15 +1056,9 @@ export default function AdminDashboard() {
                         }
                         className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm outline-none"
                       >
-                        <option value="">
-                          Select member
-                        </option>
-
+                        <option value="">Select member</option>
                         {selectedTeam.members.map((member) => (
-                          <option
-                            key={member.id}
-                            value={member.id}
-                          >
+                          <option key={member.id} value={member.id}>
                             {member.name}
                           </option>
                         ))}
@@ -781,15 +1071,9 @@ export default function AdminDashboard() {
                         }
                         className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm outline-none"
                       >
-                        <option value="">
-                          Select target team
-                        </option>
-
+                        <option value="">Select target team</option>
                         {availableMoveTargets.map((team) => (
-                          <option
-                            key={team.id}
-                            value={team.id}
-                          >
+                          <option key={team.id} value={team.id}>
                             {team.team_name} — {team.members.length}/4
                           </option>
                         ))}
@@ -797,41 +1081,32 @@ export default function AdminDashboard() {
 
                       <button
                         disabled={
-                          actionLoading ||
-                          !moveMemberId ||
-                          !targetTeamId
+                          actionLoading || !moveMemberId || !targetTeamId
                         }
                         onClick={handleMoveMember}
                         className="w-full rounded-xl bg-white text-black py-3 font-semibold disabled:opacity-40 hover:bg-yellow-300 transition"
                       >
-                        {actionLoading
-                          ? "Processing..."
-                          : "Move Member"}
+                        {actionLoading ? "Processing..." : "Move Member"}
                       </button>
                     </div>
                   </section>
                 )}
 
-              {/* LOCK */}
               {selectedTeam.status === "FORMING" && (
                 <section className="border border-yellow-500/20 bg-yellow-500/[0.04] rounded-xl p-5">
                   <p className="text-xs uppercase tracking-widest text-yellow-400">
                     Finalize Team
                   </p>
 
-                  <h3 className="font-semibold mt-2">
-                    Lock this team
-                  </h3>
+                  <h3 className="font-semibold mt-2">Lock this team</h3>
 
                   <p className="text-sm text-white/40 mt-2">
-                    Once locked, members cannot leave, move or be
-                    removed.
+                    Once locked, members cannot leave, move or be removed.
                   </p>
 
                   <button
                     disabled={
-                      actionLoading ||
-                      selectedTeam.members.length < 2
+                      actionLoading || selectedTeam.members.length < 2
                     }
                     onClick={handleLockTeam}
                     className="w-full mt-4 rounded-xl bg-yellow-400 text-black py-3 font-bold disabled:opacity-40 hover:bg-yellow-300 transition"
@@ -845,16 +1120,13 @@ export default function AdminDashboard() {
                 </section>
               )}
 
-              {/* LOCKED */}
               {selectedTeam.status === "LOCKED" && (
                 <section className="border border-green-500/20 bg-green-500/[0.04] rounded-xl p-5">
                   <p className="text-xs uppercase tracking-widest text-green-400">
                     Team Secured
                   </p>
 
-                  <h3 className="font-semibold mt-2">
-                    Team is locked
-                  </h3>
+                  <h3 className="font-semibold mt-2">Team is locked</h3>
 
                   <p className="text-sm text-white/40 mt-2">
                     Team composition is now frozen.
@@ -862,7 +1134,6 @@ export default function AdminDashboard() {
                 </section>
               )}
 
-              {/* NOTICE */}
               {notice && (
                 <div className="border border-white/10 rounded-xl p-4 text-sm text-white/70">
                   {notice}
