@@ -106,8 +106,14 @@ const ROUND_EVALUATION: Record<number, EvaluationCriterion[]> = {
   2: [
     { label: "Correct lead decisions", max: 20 },
     { label: "Trail challenges", max: 18 },
-    { label: "Hidden archive connection", max: 5 },
+    { label: "Reasoning completeness", max: 5 },
     { label: "Final trail", max: 7 },
+  ],
+  3: [
+    { label: "Unused Questions Efficiency", max: 15 },
+    { label: "Relevant Evidence Recovered", max: 15 },
+    { label: "Category Cross-Examination", max: 10 },
+    { label: "Final Verdict & Contradictions", max: 10 },
   ],
 };
 
@@ -174,16 +180,10 @@ const ROUND_META: Record<number, { label: string; subtitle: string; color: strin
     available: true,
   },
   3: {
-    label: "THE INTERROGATION",
-    subtitle: "Classification pending",
+    label: "THE INTERROGATION & FINAL VERDICT",
+    subtitle: "Interrogation + Final Deduction",
     color: "purple",
-    available: false,
-  },
-  4: {
-    label: "THE FINAL VERDICT",
-    subtitle: "Classification pending",
-    color: "red",
-    available: false,
+    available: true,
   },
 };
 
@@ -640,7 +640,7 @@ export default function AdminDashboard() {
         </header>
 
         <div className="max-w-7xl mx-auto px-6 py-8">
-          {(activeView === "round1" || activeView === "round2" || activeView === "round3" || activeView === "round4") && (
+          {(activeView === "round1" || activeView === "round2" || activeView === "round3") && (
             <>
               <div className="mb-6">
                 <p className="text-xs uppercase tracking-[0.25em] text-white/35">Round {detailRound}</p>
@@ -816,16 +816,16 @@ export default function AdminDashboard() {
               </div>
               <div className="overflow-x-auto">
                 <div className="min-w-[850px]">
-                  <div className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
-                    <span>#</span><span>Team</span><span>R1</span><span>R2</span><span>R3</span><span>R4</span><span>Total</span>
+                  <div className="grid grid-cols-[60px_1fr_90px_90px_110px_110px] gap-4 px-6 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
+                    <span>#</span><span>Team</span><span>R1</span><span>R2</span><span>R3 (Final)</span><span>Total</span>
                   </div>
                   {liveResults.map((team, index) => (
-                    <div key={team.team_id} className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-4 border-b border-white/5 items-center">
+                    <div key={team.team_id} className="grid grid-cols-[60px_1fr_90px_90px_110px_110px] gap-4 px-6 py-4 border-b border-white/5 items-center">
                       <span className="text-white/40">{index + 1}</span>
                       <div><p className="font-semibold">{team.team_name}</p><p className="text-xs text-yellow-400/70 tracking-widest">{team.team_code}</p></div>
                       <span>{formatScore(team.round1_score)}</span><span>{formatScore(team.round2_score)}</span>
-                      <span className="text-white/35">{formatScore(team.round3_score)}</span><span className="text-white/35">{formatScore(team.round4_score)}</span>
-                      <span className="font-semibold text-yellow-400">{formatScore(team.total_score)}</span>
+                      <span className="text-yellow-400 font-semibold">{formatScore(team.round3_score)}</span>
+                      <span className="font-semibold text-yellow-400">{formatScore((team.round1_score || 0) + (team.round2_score || 0) + (team.round3_score || 0))}</span>
                     </div>
                   ))}
                 </div>
@@ -948,15 +948,15 @@ export default function AdminDashboard() {
               <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
                 <p className="text-xs uppercase tracking-[0.25em] text-blue-300">Scoring</p>
                 <h2 className="text-3xl font-semibold mt-1">Round Results</h2>
-                <div className="grid md:grid-cols-2 gap-4 mt-6">
-                  {[1,2,3,4].map((n) => {
+                <div className="grid md:grid-cols-3 gap-4 mt-6">
+                  {[1,2,3].map((n) => {
                     const r = roundByNumber.get(n);
                     const criteria = ROUND_EVALUATION[n] || [];
                     return (
                       <div key={n} className="border border-white/10 rounded-xl p-5">
                         <p className="text-xs uppercase tracking-widest text-white/30">Round {n}</p>
-                        <h3 className="font-semibold mt-1">{ROUND_META[n].label}</h3>
-                        {ROUND_META[n].available ? (
+                        <h3 className="font-semibold mt-1">{ROUND_META[n]?.label || `Round ${n}`}</h3>
+                        {ROUND_META[n]?.available ? (
                           <>
                             <div className="grid grid-cols-2 gap-4 mt-5">
                               <div><p className="text-xs text-white/30">Average</p><p className="mt-1 font-semibold">{formatScore(r?.average_score)}</p></div>
@@ -983,14 +983,14 @@ export default function AdminDashboard() {
                 <h2 className="text-2xl font-semibold mt-1">Current Team Totals</h2>
                 <div className="overflow-x-auto mt-5">
                   <div className="min-w-[820px]">
-                    <div className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-3 px-4 py-3 border-b border-white/10 text-[10px] uppercase tracking-widest text-white/30">
-                      <span>#</span><span>Team</span><span>R1</span><span>R2</span><span>R3</span><span>R4</span><span>Total</span>
+                    <div className="grid grid-cols-[60px_1fr_90px_90px_110px_110px] gap-3 px-4 py-3 border-b border-white/10 text-[10px] uppercase tracking-widest text-white/30">
+                      <span>#</span><span>Team</span><span>R1</span><span>R2</span><span>R3 (Final)</span><span>Total</span>
                     </div>
                     {liveResults.map((team, index) => (
-                      <div key={`result-${team.team_id}`} className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-3 px-4 py-4 border-b border-white/5 items-center">
+                      <div key={`result-${team.team_id}`} className="grid grid-cols-[60px_1fr_90px_90px_110px_110px] gap-3 px-4 py-4 border-b border-white/5 items-center">
                         <span className="text-white/35">{index + 1}</span>
                         <div><p className="font-semibold">{team.team_name}</p><p className="text-xs text-yellow-400/60 tracking-widest mt-1">{team.team_code}</p></div>
-                        <span>{formatScore(team.round1_score)}</span><span>{formatScore(team.round2_score)}</span><span className="text-white/35">{formatScore(team.round3_score)}</span><span className="text-white/35">{formatScore(team.round4_score)}</span><span className="font-semibold text-yellow-400">{formatScore(team.total_score)}</span>
+                        <span>{formatScore(team.round1_score)}</span><span>{formatScore(team.round2_score)}</span><span className="text-yellow-400 font-semibold">{formatScore(team.round3_score)}</span><span className="font-semibold text-yellow-400">{formatScore((team.round1_score || 0) + (team.round2_score || 0) + (team.round3_score || 0))}</span>
                       </div>
                     ))}
                   </div>
@@ -1144,11 +1144,11 @@ export default function AdminDashboard() {
             <h2 className="text-2xl font-semibold mt-1">Rounds</h2>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            {[1, 2, 3, 4].map((roundNumber) => {
+          <div className="grid md:grid-cols-3 gap-4">
+            {[1, 2, 3].map((roundNumber) => {
               const meta = ROUND_META[roundNumber];
               const round = roundByNumber.get(roundNumber);
-              const available = meta.available;
+              const available = meta?.available;
 
               return (
                 <button
