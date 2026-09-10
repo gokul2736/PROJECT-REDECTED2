@@ -760,17 +760,16 @@ function Round2FollowTheTrail({
   }
 
   function submitFinalTrail() {
-    if (!allLeadsDecided || finished) return;
-    if (relevantLeadsSolved < 3) return;
+    if (finished) return;
 
-    if (finalChoice !== FINAL_ANSWER) {
+    const correct = finalChoice === FINAL_ANSWER;
+    const bonus = correct ? 7 : 0;
+
+    if (!correct) {
       setIncorrectAttempts((prev) => prev + 1);
-      setTimePenaltySeconds((prev) => prev + 30);
-      setFinalError("TRAIL RESPONSE RECORDED");
-      return;
     }
 
-    const score = currentScore(7);
+    const score = currentScore(bonus);
     setFinalScore(score);
     setFinalSubmitted(true);
     setFinished(true);
@@ -781,13 +780,13 @@ function Round2FollowTheTrail({
 
     const metrics: EvaluationMetrics = {
       timeSpentSeconds: elapsed,
-      incorrectAttempts,
+      incorrectAttempts: incorrectAttempts + (correct ? 0 : 1),
       hintsUsed,
       importantLeadsFound,
       correctLeadDecisions,
       challengePoints: Math.min(18, challengePoints),
       hiddenClueFound,
-      finalTrailCorrect: true,
+      finalTrailCorrect: correct,
       reasoningRecorded: Object.keys(reasons).length,
     };
 
@@ -802,6 +801,7 @@ function Round2FollowTheTrail({
     const score = currentScore(0);
 
     setFinalScore(score);
+    setFinalSubmitted(true);
     setFinished(true);
 
     if (!expired) return;
@@ -1336,7 +1336,7 @@ function Round2FollowTheTrail({
                   LEADS REVIEWED
                 </div>
                 <div className="mt-2 text-3xl font-black text-white">
-                  {decidedCount} / 8
+                  {decidedCount} / 10
                 </div>
               </div>
 
@@ -1419,7 +1419,7 @@ function Round2FollowTheTrail({
                   <div className="flex justify-between">
                     <span>Reasons recorded</span>
                     <span className="text-zinc-400">
-                      {Object.keys(reasons).length}/8
+                      {Object.keys(reasons).length}/10
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -1437,7 +1437,7 @@ function Round2FollowTheTrail({
                 </div>
               </div>
 
-              {allLeadsDecided && !finished && (
+              {!finished && (
                 <div className="mt-3 border border-amber-700/60 bg-amber-950/10 p-4">
                   <div className="text-[9px] tracking-[0.2em] text-amber-500">
                     FINAL TRAIL
@@ -1469,7 +1469,7 @@ function Round2FollowTheTrail({
 
                   <button
                     onClick={submitFinalTrail}
-                    disabled={!finalChoice || relevantLeadsSolved < 3}
+                    disabled={!finalChoice}
                     className="mt-3 w-full border border-amber-600 bg-amber-500/10 px-3 py-3 text-[9px] font-bold tracking-wider text-amber-400 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-35"
                   >
                     SUBMIT FINAL TRAIL
@@ -1500,6 +1500,12 @@ function Round2FollowTheTrail({
                   <div className="mt-2 text-[9px] text-green-700">
                     TEAM SCORE
                   </div>
+                  <button
+                    onClick={() => window.location.href = "/rounds/round-3"}
+                    className="mt-4 w-full border border-amber-600 bg-amber-500/10 px-3 py-3 text-[9px] font-bold tracking-wider text-amber-400 hover:bg-amber-500/20"
+                  >
+                    PROCEED TO ROUND 3 →
+                  </button>
                 </div>
               )}
             </aside>
@@ -1627,84 +1633,38 @@ function Round2FollowTheTrail({
 }
 
 export default function Round2Wrapper() {
-  const router = useRouter();
-  const [team, setTeam] = useState<any>(null);
-  const [roundState, setRoundState] = useState<any>(null);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [teamCode, setTeamCode] = useState("TEAM");
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    let interval: any;
-    async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.replace("/login"); return; }
-      const { data: tRows } = await supabase.rpc("get_my_team");
-      const t = Array.isArray(tRows) ? tRows[0] : tRows;
-      if (!t?.team_id) {
-        setErrorMessage("You are not assigned to a team yet.");
-        setLoading(false);
-        return;
+    try {
+      const raw = typeof window !== "undefined"
+        ? localStorage.getItem("pr2_team")
+        : null;
+      if (raw) {
+        const t = JSON.parse(raw);
+        setTeamCode(t.code || t.name || "TEAM");
       }
-      setTeam(t);
-      const { data: rs } = await supabase.rpc("student_get_round_state", { p_round_number: 2 });
-      if (rs) setRoundState(rs);
-      setLoading(false);
-
-      interval = setInterval(async () => {
-        const { data: pollRs } = await supabase.rpc("student_get_round_state", { p_round_number: 2 });
-        if (pollRs) setRoundState(pollRs);
-      }, 4000);
+    } catch {
+      // ignore
     }
-    load();
-    return () => clearInterval(interval);
-  }, [router]);
+    setReady(true);
+  }, []);
 
   const handleComplete = async (score: number, metrics: any) => {
-    if (!team) return;
-    await supabase.rpc("student_submit_round", {
-      p_round_number: 2,
-      p_metadata: { officialScore: score, metrics }
-    });
-    setRoundState((prev: any) => ({ ...prev, round_status: "COMPLETED", score_final: true }));
+    try {
+      await supabase.rpc("student_submit_round", {
+        p_round_number: 2,
+        p_metadata: { officialScore: score, metrics }
+      });
+    } catch {
+      // score shown on screen — coordinator checks manually
+    }
   };
 
-  if (errorMessage && !team) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center bg-black p-8 text-center text-white font-sans">
-        <h1 className="text-3xl font-black text-amber-500 mb-4">ACCESS ERROR</h1>
-        <p className="text-zinc-400">{errorMessage} Return to the lobby to join or create one.</p>
-        <button onClick={() => router.push("/lobby")} className="mt-8 border border-amber-600 bg-amber-950/20 px-6 py-3 text-amber-500 transition hover:bg-amber-600 hover:text-black">
-          RETURN TO LOBBY
-        </button>
-      </div>
-    );
-  }
-
-  if (loading) {
+  if (!ready) {
     return <div className="flex h-screen items-center justify-center bg-black text-amber-500 tracking-[0.2em] font-sans">LOADING ROUND 02...</div>;
   }
 
-  if (roundState?.round_status === "COMPLETED" || roundState?.score_final) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center bg-black p-8 text-center text-white font-sans">
-        <h1 className="text-3xl font-black text-amber-500 mb-4">ROUND 02 // SUBMITTED</h1>
-        <p className="text-zinc-400">Your team's investigation has been locked and recorded.</p>
-        <button onClick={() => router.push("/lobby")} className="mt-8 border border-amber-600 bg-amber-950/20 px-6 py-3 text-amber-500 transition hover:bg-amber-600 hover:text-black">
-          RETURN TO LOBBY
-        </button>
-      </div>
-    );
-  }
-
-  if (roundState?.round_status !== "LIVE") {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center bg-black p-8 text-center text-white font-sans">
-        <h1 className="text-3xl font-black text-amber-500 mb-4">ROUND 02 // NOT ACTIVE</h1>
-        <p className="text-zinc-400">Waiting for Admin to start the round...</p>
-        <div className="mt-8 animate-spin h-8 w-8 rounded-full border-t-2 border-amber-500 border-opacity-50 mx-auto"></div>
-      </div>
-    );
-  }
-
-  return <Round2FollowTheTrail teamCode={team.team_code} onCompleteRound={handleComplete} />;
+  return <Round2FollowTheTrail teamCode={teamCode} onCompleteRound={handleComplete} />;
 }

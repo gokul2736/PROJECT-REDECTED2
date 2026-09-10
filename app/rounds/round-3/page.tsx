@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -114,14 +114,13 @@ function calc(s: TeamState) {
 
 export default function Page() {
   const router = useRouter();
-  const [teamId, setTeamId] = useState("");
-  const [teamName, setTeamName] = useState("");
-  const [bundle, setBundle] = useState<Bundle | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [teamName, setTeamName] = useState("YOUR TEAM");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [started, setStarted] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [remaining, setRemaining] = useState(1800);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [history, setHistory] = useState<Asked[]>([]);
   const [evidence, setEvidence] = useState<Evidence[]>([]);
   const [question, setQuestion] = useState("");
@@ -138,7 +137,7 @@ export default function Page() {
   });
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   const state: TeamState = useMemo(() => ({
     history,
     evidence,
@@ -149,77 +148,44 @@ export default function Page() {
 
   const score = useMemo(() => calc(state), [state]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace("/login"); return; }
-    
-    const { data: teamRows, error: te } = await supabase.rpc("get_my_team");
-    const team = Array.isArray(teamRows) ? teamRows[0] : teamRows;
-    if (te || !team?.team_id) {
-      setError("You are not assigned to a team. Return to the team lobby.");
-      setLoading(false);
-      return;
-    }
-    
-    setTeamId(team.team_id);
-    setTeamName(team.team_name || team.team_code || "YOUR TEAM");
-    
-    const { data: b, error: be } = await supabase.rpc("student_get_round_state", { p_round_number: ROUND });
-    if (be) { setError(be.message); setLoading(false); return; }
-    
-    setBundle(b);
-    setRemaining(b.started_at ? Math.max(0, Math.ceil((new Date(b.started_at).getTime() + b.duration_seconds * 1000 - Date.now()) / 1000)) : b.duration_seconds);
-    
-    const m = b.metadata || {};
-    setHistory(Array.isArray(m.history) ? m.history : []);
-    setEvidence(Array.isArray(m.evidence) ? m.evidence : []);
-    if (m.verdict) setVerdict(m.verdict);
-    
-    setSubmitted(b.round_status === "COMPLETED" || b.score_final);
-    if (b.round_status === "LIVE") setStarted(true);
-    
-    setLoading(false);
-  }, [router]);
-
-  useEffect(() => { load(); }, [load]);
-
   useEffect(() => {
-    if (!teamId) return;
-    const i = setInterval(async () => {
-      const { data } = await supabase.rpc("student_get_round_state", { p_round_number: ROUND });
-      if (data) {
-        setBundle(data);
-        if (data.round_status === "COMPLETED" || data.score_final) setSubmitted(true);
-        if (data.round_status === "LIVE" && !started) setStarted(true);
-        if (data.round_status !== "LIVE" && data.round_status !== "COMPLETED") setStarted(false);
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("pr2_team") : null;
+      if (raw) {
+        const t = JSON.parse(raw);
+        setTeamName(t.name || "YOUR TEAM");
       }
-    }, POLL_MS);
-    return () => clearInterval(i);
-  }, [teamId, started]);
+    } catch { /* ignore */ }
+  }, []);
+
+  const beginRound = () => {
+    const now = Date.now();
+    setStarted(true);
+    setStartedAt(now);
+    setRemaining(1800);
+  };
 
   useEffect(() => {
-    if (!started || submitted || !bundle?.started_at) return;
+    if (!started || submitted || !startedAt) return;
     const i = setInterval(() => {
-      const r = Math.max(0, Math.ceil((new Date(bundle.started_at!).getTime() + bundle.duration_seconds * 1000 - Date.now()) / 1000));
+      const r = Math.max(0, Math.ceil((startedAt + 1800 * 1000 - Date.now()) / 1000));
       setRemaining(r);
       if (r <= 0) {
-        setStarted(false);
         setError("TIME EXPIRED. Submit your current investigation state.");
       }
     }, 1000);
     return () => clearInterval(i);
-  }, [started, submitted, bundle]);
-
-  const persist = useCallback((next: TeamState) => {
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => supabase.rpc("student_save_round_state", { p_round_number: ROUND, p_metadata: next, p_current_step: next.history.length }), SAVE_MS);
-  }, []);
+  }, [started, submitted, startedAt]);
 
   useEffect(() => {
-    if (teamId && started && !submitted) persist(state);
-  }, [state, teamId, started, submitted, persist]);
+    if (!started || submitted) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      try {
+        supabase.rpc("student_save_round_state", { p_round_number: ROUND, p_metadata: state, p_current_step: state.history.length });
+      } catch { /* ignore */ }
+    }, SAVE_MS);
+  }, [state, started, submitted]);
 
   const ask = (text?: string) => {
     const q = (text ?? question).trim();
@@ -243,7 +209,7 @@ export default function Page() {
 
   const submit = async () => {
     if (!started && !submitted) return;
-    
+
     if (verdict.selected_contradictions.length < 2) {
       setError("FINAL VERDICT: You must select at least 2 contradictions.");
       setTab("verdict");
@@ -261,12 +227,13 @@ export default function Page() {
     }
 
     setError("");
-    const finalState = { ...state, officialScore: score.official };
-    const { data, error: e } = await supabase.rpc("student_submit_round", { p_round_number: ROUND, p_metadata: finalState });
-    if (e) { setError(e.message); return; }
     setSubmitted(true);
     setStarted(false);
-    setBundle((b) => (b ? { ...b, round_status: "COMPLETED", score: data.score, score_final: true, score_breakdown: data.breakdown } : b));
+
+    try {
+      const finalState = { ...state, officialScore: score.official };
+      await supabase.rpc("student_submit_round", { p_round_number: ROUND, p_metadata: finalState });
+    } catch { /* score visible on screen */ }
   };
 
   const handleContradictionToggle = (c: string) => {
@@ -276,11 +243,11 @@ export default function Page() {
     });
   };
 
-  if (loading) return <Screen><Card><Kicker>PROJECT: REDACTED²</Kicker><h1>LOADING INVESTIGATION TEAM</h1><p>Connecting to the classified team record...</p></Card></Screen>;
-  if (error && !teamId) return <Screen><Card><Kicker>ACCESS ERROR</Kicker><h1>TEAM NOT FOUND</h1><p>{error}</p></Card></Screen>;
-  if (submitted) return <Screen><Card><Kicker>FINAL ROUND // RECORDED</Kicker><h1>VERDICT SUBMITTED</h1><p>TEAM: <b>{teamName}</b></p><div className="score">{bundle?.score?.toFixed?.(2) ?? score.official.toFixed(2)} / 50</div><p>Your team's investigation and verdict have been locked and submitted to the Admin.</p></Card></Screen>;
-  
-  if (bundle?.round_status !== "LIVE") return <Screen><Card><Kicker>TEAM: {teamName}</Kicker><h1>ROUND 03 — FINAL ROUND</h1><p>This is the final phase of PROJECT: REDACTED².</p><div className="notice">Waiting for Admin to start the round...</div></Card></Screen>;
+  if (loading) return <Screen><Card><Kicker>PROJECT: REDACTED²</Kicker><h1>LOADING...</h1><p>Connecting...</p></Card></Screen>;
+
+  if (submitted) return <Screen><Card><Kicker>FINAL ROUND // RECORDED</Kicker><h1>VERDICT SUBMITTED</h1><p>TEAM: <b>{teamName}</b></p><div className="score">{score.official.toFixed(2)} / 50</div><p>Your team's verdict has been recorded. Show this screen to the coordinator.</p></Card></Screen>;
+
+  if (!started) return <Screen><Card><Kicker>TEAM: {teamName}</Kicker><h1>ROUND 03 — FINAL ROUND</h1><p>This is the final phase of PROJECT: REDACTED².</p><p>You have 30 minutes to interrogate ECHO, collect evidence, and submit your final verdict.</p><button onClick={beginRound}>START ROUND 03</button></Card></Screen>;
 
   return (
     <main>

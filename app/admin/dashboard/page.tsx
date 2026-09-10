@@ -333,7 +333,7 @@ export default function AdminDashboard() {
   const loadDashboardData = async () => {
     setDashboardLoading(true);
 
-    const [roundResponse, resultResponse, scoreResponse] = await Promise.all([
+    const [roundResponse, resultResponse, scoreResponse, roundStatesResponse] = await Promise.all([
       supabase.rpc("admin_get_round_dashboard"),
       supabase.rpc("admin_get_live_results"),
       supabase
@@ -341,6 +341,10 @@ export default function AdminDashboard() {
         .select("id, team_id, round_number, score, max_score, breakdown, is_final, updated_at")
         .order("round_number", { ascending: true })
         .order("score", { ascending: false }),
+      supabase
+        .from("round_states")
+        .select("round_number, status, started_at, ended_at")
+        .in("round_number", [1, 2, 3]),
     ]);
 
     if (roundResponse.error) {
@@ -355,7 +359,20 @@ export default function AdminDashboard() {
       console.error("Round score error:", scoreResponse.error);
     }
 
-    setRounds((roundResponse.data || []) as RoundSummary[]);
+    const authoritativeStates = new Map(
+      ((roundStatesResponse.data || []) as { round_number: number; status: string; started_at: string | null; ended_at: string | null }[])
+        .map((rs) => [rs.round_number, rs])
+    );
+
+    const mergedRounds = ((roundResponse.data || []) as RoundSummary[]).map((r) => {
+      const auth = authoritativeStates.get(r.round_number);
+      if (auth) {
+        return { ...r, status: auth.status, started_at: auth.started_at, ended_at: auth.ended_at };
+      }
+      return r;
+    });
+
+    setRounds(mergedRounds);
     setLiveResults((resultResponse.data || []) as LiveResult[]);
     setRoundScores((scoreResponse.data || []) as RoundScore[]);
     setDashboardLoading(false);
