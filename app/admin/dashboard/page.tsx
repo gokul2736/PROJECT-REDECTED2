@@ -878,51 +878,7 @@ export default function AdminDashboard() {
           )}
 
           {activeView === "secrets" && (
-            <div className="space-y-5">
-              <section className="border border-red-500/20 bg-red-500/[0.03] rounded-2xl p-6">
-                <p className="text-xs uppercase tracking-[0.25em] text-red-300">ADMIN ONLY</p>
-                <h2 className="text-3xl font-semibold mt-1">Secrets & Hidden Controls</h2>
-                <p className="text-sm text-white/40 mt-2">Do not expose this screen to participants. These values are intentionally hidden from the player UI.</p>
-              </section>
-
-              <div className="grid lg:grid-cols-2 gap-5">
-                <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
-                  <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Round 1</p>
-                  <h3 className="text-2xl font-semibold mt-1">Hidden bonuses & controls</h3>
-                  <div className="mt-5 space-y-3">
-                    {R1_BONUSES_AND_CONTROLS.map((item) => (
-                      <div key={item.label} className="border border-white/8 rounded-xl p-4">
-                        <div className="flex justify-between gap-4"><span className="font-semibold">{item.label}</span><span className="text-yellow-400 font-bold">{item.value}</span></div>
-                        <p className="text-xs text-white/35 mt-2 leading-5">{item.detail}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
-                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300">Round 2</p>
-                  <h3 className="text-2xl font-semibold mt-1">Hidden penalties & controls</h3>
-                  <div className="mt-5 space-y-3">
-                    {R2_BONUSES_AND_CONTROLS.map((item) => (
-                      <div key={item.label} className="border border-white/8 rounded-xl p-4">
-                        <div className="flex justify-between gap-4"><span className="font-semibold">{item.label}</span><span className="text-cyan-300 font-bold">{item.value}</span></div>
-                        <p className="text-xs text-white/35 mt-2 leading-5">{item.detail}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </div>
-
-              <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
-                <p className="text-xs uppercase tracking-[0.25em] text-white/35">R2 hidden connection</p>
-                <h3 className="text-xl font-semibold mt-1">Archive cross-reference</h3>
-                <div className="mt-4 grid sm:grid-cols-3 gap-3">
-                  {[["E-10", "Preparation at 22:08"], ["E-14", "Restricted transfer infrastructure"], ["E-16", "Emergency network procedure"]].map(([id, detail]) => (
-                    <div key={id} className="border border-white/8 rounded-xl p-4"><p className="font-bold text-yellow-400">{id}</p><p className="text-xs text-white/45 mt-2">{detail}</p></div>
-                  ))}
-                </div>
-              </section>
-            </div>
+            <AdminSecretsPanel teams={liveResults} />
           )}
 
           {activeView === "solutions" && (
@@ -1654,5 +1610,191 @@ export default function AdminDashboard() {
         </div>
       )}
     </main>
+  );
+}
+
+function AdminSecretsPanel({ teams }: { teams: LiveResult[] }) {
+  const [selectedTeamId, setSelectedTeamId] = useState("");
+  const [secrets, setSecrets] = useState({
+    speed_bonus_enabled: false,
+    no_hint_bonus_enabled: false,
+    secret_bonus_enabled: false,
+    secret_penalty_enabled: false,
+  });
+  const [baseScore, setBaseScore] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  const selectedTeam = teams.find((t) => t.team_id === selectedTeamId);
+
+  useEffect(() => {
+    if (!selectedTeamId) return;
+    async function load() {
+      const { data, error } = await supabase.rpc("admin_get_team_secrets", {
+        p_team_id: selectedTeamId,
+        p_round_number: 1,
+      });
+      if (data) {
+        setSecrets({
+          speed_bonus_enabled: !!data.speed_bonus_enabled,
+          no_hint_bonus_enabled: !!data.no_hint_bonus_enabled,
+          secret_bonus_enabled: !!data.secret_bonus_enabled,
+          secret_penalty_enabled: !!data.secret_penalty_enabled,
+        });
+      }
+
+      const { data: scoreData } = await supabase.from("team_round_submissions")
+        .select("metadata")
+        .eq("team_id", selectedTeamId)
+        .eq("round_number", 1)
+        .single();
+        
+      if (scoreData?.metadata?.rawScore) {
+        setBaseScore(scoreData.metadata.rawScore / 2);
+      } else {
+        setBaseScore(0);
+      }
+    }
+    load();
+  }, [selectedTeamId]);
+
+  const handleToggle = async (key: keyof typeof secrets) => {
+    const next = { ...secrets, [key]: !secrets[key] };
+    if (key === "secret_bonus_enabled" && next.secret_bonus_enabled) {
+      next.secret_penalty_enabled = false;
+    }
+    if (key === "secret_penalty_enabled" && next.secret_penalty_enabled) {
+      next.secret_bonus_enabled = false;
+    }
+    setSecrets(next);
+    
+    await supabase.rpc("admin_set_team_secrets", {
+      p_team_id: selectedTeamId,
+      p_round_number: 1,
+      p_speed_bonus: next.speed_bonus_enabled,
+      p_no_hint_bonus: next.no_hint_bonus_enabled,
+      p_secret_bonus: next.secret_bonus_enabled,
+      p_secret_penalty: next.secret_penalty_enabled,
+    });
+  };
+
+  const finalizeScore = async () => {
+    setSaving(true);
+    await supabase.rpc("admin_recalculate_r1_score", {
+      p_team_id: selectedTeamId,
+    });
+    setSaving(false);
+    alert("Official score updated successfully.");
+  };
+
+  let adjusted = baseScore;
+  if (secrets.speed_bonus_enabled) adjusted += 5;
+  if (secrets.no_hint_bonus_enabled) adjusted += 2.5;
+  if (secrets.secret_bonus_enabled) adjusted += 5;
+  if (secrets.secret_penalty_enabled) adjusted -= 5;
+  if (adjusted > 50) adjusted = 50;
+  if (adjusted < 0) adjusted = 0;
+
+  return (
+    <div className="space-y-5">
+      <section className="border border-red-500/20 bg-red-500/[0.03] rounded-2xl p-6">
+        <p className="text-xs uppercase tracking-[0.25em] text-red-300">ADMIN ONLY</p>
+        <h2 className="text-3xl font-semibold mt-1">Secrets & Hidden Controls</h2>
+        <p className="text-sm text-white/40 mt-2">Do not expose this screen to participants. These values are intentionally hidden from the player UI.</p>
+      </section>
+
+      <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+        <label className="block text-xs uppercase tracking-[0.25em] text-yellow-400 mb-2">Select Team</label>
+        <select 
+          className="w-full bg-black border border-white/20 rounded p-3 text-white focus:outline-none focus:border-yellow-400"
+          value={selectedTeamId}
+          onChange={e => setSelectedTeamId(e.target.value)}
+        >
+          <option value="">-- CHOOSE TEAM --</option>
+          {teams.map(t => (
+            <option key={t.team_id} value={t.team_id}>{t.team_name} ({t.team_code})</option>
+          ))}
+        </select>
+      </section>
+
+      {selectedTeamId && (
+        <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+          <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Round 1 Controls</p>
+          <h3 className="text-2xl font-semibold mt-1">Hidden Scoring Adjustments</h3>
+          
+          <div className="mt-6 space-y-4 max-w-lg">
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <p className="font-semibold text-lg">20-Min Speed Bonus</p>
+                <p className="text-xs text-white/50">+5 official points</p>
+              </div>
+              <button 
+                onClick={() => handleToggle("speed_bonus_enabled")}
+                className={`px-4 py-2 font-bold rounded ${secrets.speed_bonus_enabled ? 'bg-green-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+              >
+                {secrets.speed_bonus_enabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <p className="font-semibold text-lg">No-Hint Bonus</p>
+                <p className="text-xs text-white/50">+2.5 official points</p>
+              </div>
+              <button 
+                onClick={() => handleToggle("no_hint_bonus_enabled")}
+                className={`px-4 py-2 font-bold rounded ${secrets.no_hint_bonus_enabled ? 'bg-green-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+              >
+                {secrets.no_hint_bonus_enabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <p className="font-semibold text-lg text-red-400">Secret Bonus</p>
+                <p className="text-xs text-white/50">+5 official points (Mutually exclusive)</p>
+              </div>
+              <button 
+                onClick={() => handleToggle("secret_bonus_enabled")}
+                className={`px-4 py-2 font-bold rounded ${secrets.secret_bonus_enabled ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+              >
+                {secrets.secret_bonus_enabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between border-b border-white/10 pb-4">
+              <div>
+                <p className="font-semibold text-lg text-red-400">Secret Penalty</p>
+                <p className="text-xs text-white/50">-5 official points (Mutually exclusive)</p>
+              </div>
+              <button 
+                onClick={() => handleToggle("secret_penalty_enabled")}
+                className={`px-4 py-2 font-bold rounded ${secrets.secret_penalty_enabled ? 'bg-red-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}
+              >
+                {secrets.secret_penalty_enabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-8 bg-black border border-white/10 p-6 rounded-xl max-w-lg">
+            <div className="flex justify-between mb-2">
+              <span className="text-white/50 uppercase text-xs tracking-widest">Base Official Score</span>
+              <span className="font-semibold">{baseScore.toFixed(1)} / 50</span>
+            </div>
+            <div className="flex justify-between mb-6">
+              <span className="text-yellow-400 uppercase text-xs tracking-widest">Adjusted Official Score</span>
+              <span className="font-bold text-yellow-400 text-xl">{adjusted.toFixed(1)} / 50</span>
+            </div>
+            
+            <button 
+              onClick={finalizeScore}
+              disabled={saving}
+              className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded tracking-widest"
+            >
+              {saving ? "SAVING..." : "FINALIZE OFFICIAL SCORE"}
+            </button>
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
