@@ -1630,6 +1630,7 @@ export default function Round2Wrapper() {
   const router = useRouter();
   const [team, setTeam] = useState<any>(null);
   const [roundState, setRoundState] = useState<any>(null);
+  const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1639,7 +1640,11 @@ export default function Round2Wrapper() {
       if (!user) { router.replace("/login"); return; }
       const { data: tRows } = await supabase.rpc("get_my_team");
       const t = Array.isArray(tRows) ? tRows[0] : tRows;
-      if (!t?.team_id) { router.replace("/lobby"); return; }
+      if (!t?.team_id) {
+        setErrorMessage("You are not assigned to a team yet.");
+        setLoading(false);
+        return;
+      }
       setTeam(t);
       const { data: rs } = await supabase.rpc("student_get_round_state", { p_round_number: 2 });
       if (rs) setRoundState(rs);
@@ -1662,6 +1667,18 @@ export default function Round2Wrapper() {
     });
     setRoundState((prev: any) => ({ ...prev, round_status: "COMPLETED", score_final: true }));
   };
+
+  if (errorMessage && !team) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-black p-8 text-center text-white font-sans">
+        <h1 className="text-3xl font-black text-amber-500 mb-4">ACCESS ERROR</h1>
+        <p className="text-zinc-400">{errorMessage} Return to the lobby to join or create one.</p>
+        <button onClick={() => router.push("/lobby")} className="mt-8 border border-amber-600 bg-amber-950/20 px-6 py-3 text-amber-500 transition hover:bg-amber-600 hover:text-black">
+          RETURN TO LOBBY
+        </button>
+      </div>
+    );
+  }
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center bg-black text-amber-500 tracking-[0.2em] font-sans">LOADING ROUND 02...</div>;
