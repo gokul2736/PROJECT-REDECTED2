@@ -56,6 +56,110 @@ type LiveResult = {
   total_score: number;
 };
 
+type RoundScore = {
+  id: string;
+  team_id: string;
+  round_number: number;
+  score: number;
+  max_score: number;
+  breakdown: Record<string, unknown>;
+  is_final: boolean;
+  updated_at: string;
+};
+
+type EvaluationCriterion = {
+  label: string;
+  max: number;
+};
+
+type AdminUser = {
+  id: string;
+  email: string;
+  role: string;
+};
+
+type SolutionRow = {
+  id: string;
+  title: string;
+  answer: string;
+  support?: string;
+  category?: string;
+};
+
+const EVENT_EVALUATION: string[] = [
+  "Evidence collected",
+  "Accuracy of the final deduction",
+  "Logical reasoning",
+  "Speed",
+  "Strategic decision-making",
+  "Final presentation",
+];
+
+const ROUND_EVALUATION: Record<number, EvaluationCriterion[]> = {
+  1: [
+    { label: "Evidence collected", max: 45 },
+    { label: "Team efficiency", max: 15 },
+    { label: "MCQ accuracy", max: 20 },
+    { label: "Speed", max: 10 },
+    { label: "Strategic discipline", max: 10 },
+  ],
+  2: [
+    { label: "Correct lead decisions", max: 20 },
+    { label: "Trail challenges", max: 18 },
+    { label: "Hidden archive connection", max: 5 },
+    { label: "Final trail", max: 7 },
+  ],
+};
+
+const R1_BONUSES_AND_CONTROLS = [
+  { label: "Early investigation bonus", value: "+10", detail: "4 of 5 core evidence items studied within 20 minutes." },
+  { label: "No-hint efficiency bonus", value: "+5", detail: "Awarded when the team finishes Round 1 without using any hint." },
+  { label: "Hints 1–2", value: "FREE", detail: "The first two investigation hints cost nothing." },
+  { label: "Hints 3+", value: "−5 PTS", detail: "Later Round 1 hints deduct 5 points." },
+  { label: "Forensic credits", value: "5", detail: "Limited forensic analyses available during the investigation." },
+  { label: "Forensic processing", value: "8 SEC", detail: "Each forensic request has an 8-second processing delay." },
+  { label: "Round 1 timer", value: "35 MIN", detail: "30-minute investigation window followed by the 5-question MCQ phase." },
+];
+
+const R2_BONUSES_AND_CONTROLS = [
+  { label: "Round 2 timer", value: "25 MIN", detail: "One team-wide investigation clock." },
+  { label: "Hint penalty", value: "+20 SEC", detail: "Each Round 2 hint adds a 20-second time penalty." },
+  { label: "Wrong lead decision", value: "+30 SEC", detail: "Incorrect IMPORTANT / IGNORE decisions add time." },
+  { label: "Wrong challenge", value: "+15 SEC", detail: "Incorrect trail challenge attempts add time." },
+  { label: "Wrong cross-check", value: "+15 SEC", detail: "Incorrect cross-check attempts add time." },
+  { label: "Wrong final trail", value: "+30 SEC", detail: "An incorrect final trail submission adds time." },
+  { label: "Wrong-answer score penalty", value: "−0.5", detail: "Each incorrect attempt reduces the hidden Round 2 score by 0.5 points." },
+  { label: "Hidden archive link", value: "+5", detail: "The archive cross-reference is worth 5 points." },
+];
+
+const R1_MCQ_SOLUTIONS: SolutionRow[] = [
+  { id: "Q01", category: "TIME", title: "At what time was BLACKBOX reported missing?", answer: "22:17", support: "E-02" },
+  { id: "Q02", category: "TIME", title: "What timestamp was recorded on the recovered CCTV frame?", answer: "22:16:53", support: "E-06" },
+  { id: "Q03", category: "PEOPLE", title: "What does the credential record not prove by itself?", answer: "That the credential was used", support: "E-03, E-05" },
+  { id: "Q04", category: "PEOPLE", title: "What does the recovered security evidence fail to establish?", answer: "Who physically used the credential", support: "E-03" },
+  { id: "Q05", category: "LOCATION", title: "Which network is connected to the restricted transfer infrastructure?", answer: "Restricted transfer network", support: "E-14" },
+  { id: "Q06", category: "LOCATION", title: "Where was BLACKBOX reported missing?", answer: "Laboratory 3", support: "E-02" },
+  { id: "Q07", category: "DIGITAL", title: "What time was the deleted communication recovered from the phone?", answer: "22:08", support: "E-04" },
+  { id: "Q08", category: "DIGITAL", title: "What was recovered from the storage drive?", answer: "Transfer fragments", support: "E-10" },
+  { id: "Q09", category: "EVENT", title: "What remained active during the security interruption?", answer: "The laboratory process", support: "E-01" },
+  { id: "Q10", category: "EVENT", title: "What happened to the corridor camera during the interruption?", answer: "It was interrupted", support: "E-11" },
+];
+
+const R2_SOLUTION_ROWS: SolutionRow[] = [
+  { id: "A", category: "LOGIC", title: "THE TIMELINE WINDOW — lead decision", answer: "IMPORTANT", support: "Challenge: E-06 · Cross-check: E-06 + E-02" },
+  { id: "B", category: "OBSERVATION", title: "CAFETERIA RECEIPT — lead decision", answer: "IGNORE", support: "Challenge: The purchase is outside the critical incident window · Cross-check: E-13" },
+  { id: "C", category: "DATA", title: "THE NETWORK FRAGMENT — lead decision", answer: "IMPORTANT", support: "Challenge: E-10 · Cross-check: E-10 + E-14" },
+  { id: "D", category: "CIPHER", title: "THE WHITEBOARD NOTE — lead decision", answer: "IMPORTANT", support: "Challenge: CASE · Cross-check: E-08 + E-10" },
+  { id: "E", category: "LOGIC", title: "MAINTENANCE TIME DISCREPANCY — lead decision", answer: "IGNORE", support: "Challenge: NO · Cross-check: One record may be insufficient to establish responsibility." },
+  { id: "F", category: "LOGIC", title: "THE ACCESS PATH — lead decision", answer: "IMPORTANT", support: "Challenge: BLACKBOX could have been moved through a route that did not use the main door · Cross-check: E-14 + E-16" },
+  { id: "G", category: "OBSERVATION", title: "THE UNSIGNED ACCUSATION — lead decision", answer: "IGNORE", support: "Challenge: It is anonymous and unsupported · Cross-check: A record may not independently establish responsibility." },
+  { id: "H", category: "OBSERVATION", title: "THE CCTV GAP — lead decision", answer: "IMPORTANT", support: "Challenge: The last recovered visual point immediately before the 22:17 report · Cross-check: E-06 + E-02" },
+  { id: "I", category: "DATA", title: "TRANSFER NOTE — lead decision", answer: "IMPORTANT", support: "Challenge: E-10 · Cross-check: E-10 + E-14" },
+  { id: "J", category: "CIPHER", title: "LOCKER KEY — lead decision", answer: "IGNORE", support: "Challenge: The movement route of BLACKBOX · Cross-check: It gives no independent route evidence." },
+];
+
+const R2_FINAL_SOLUTION = "A → C → D → F → H → I";
+
 const ROUND_META: Record<number, { label: string; subtitle: string; color: string; available: boolean }> = {
   1: {
     label: "THE CRIME SCENE",
@@ -119,6 +223,8 @@ export default function AdminDashboard() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [rounds, setRounds] = useState<RoundSummary[]>([]);
   const [liveResults, setLiveResults] = useState<LiveResult[]>([]);
+  const [roundScores, setRoundScores] = useState<RoundScore[]>([]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
 
   const [loading, setLoading] = useState(true);
@@ -132,6 +238,7 @@ export default function AdminDashboard() {
 
   const [moveMemberId, setMoveMemberId] = useState("");
   const [targetTeamId, setTargetTeamId] = useState("");
+  const [activeView, setActiveView] = useState("dashboard");
 
   useEffect(() => {
     checkAdmin();
@@ -142,6 +249,7 @@ export default function AdminDashboard() {
       const refresh = window.setInterval(() => {
         loadDashboardData();
         loadTeams();
+        loadAdmins();
       }, 10000);
 
       return () => window.clearInterval(refresh);
@@ -186,7 +294,7 @@ export default function AdminDashboard() {
 
       setEmail(session.user.email || admin.email || "");
 
-      await Promise.all([loadTeams(), loadDashboardData()]);
+      await Promise.all([loadTeams(), loadDashboardData(), loadAdmins()]);
       setLoading(false);
     } catch (error) {
       console.error(error);
@@ -211,12 +319,28 @@ export default function AdminDashboard() {
     setTeamsLoading(false);
   };
 
+  const loadAdmins = async () => {
+    const { data, error } = await supabase.rpc("admin_get_admins");
+
+    if (error) {
+      console.error("Admin list error:", error);
+      return;
+    }
+
+    setAdmins((data || []) as AdminUser[]);
+  };
+
   const loadDashboardData = async () => {
     setDashboardLoading(true);
 
-    const [roundResponse, resultResponse] = await Promise.all([
+    const [roundResponse, resultResponse, scoreResponse] = await Promise.all([
       supabase.rpc("admin_get_round_dashboard"),
       supabase.rpc("admin_get_live_results"),
+      supabase
+        .from("team_round_scores")
+        .select("id, team_id, round_number, score, max_score, breakdown, is_final, updated_at")
+        .order("round_number", { ascending: true })
+        .order("score", { ascending: false }),
     ]);
 
     if (roundResponse.error) {
@@ -227,14 +351,45 @@ export default function AdminDashboard() {
       console.error("Live results error:", resultResponse.error);
     }
 
+    if (scoreResponse.error) {
+      console.error("Round score error:", scoreResponse.error);
+    }
+
     setRounds((roundResponse.data || []) as RoundSummary[]);
     setLiveResults((resultResponse.data || []) as LiveResult[]);
+    setRoundScores((scoreResponse.data || []) as RoundScore[]);
     setDashboardLoading(false);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/admin/login");
+  };
+
+  const handleRoundStatus = async (roundNumber: number, status: string) => {
+    const label = ROUND_META[roundNumber]?.label || `Round ${roundNumber}`;
+    const action = status === "LIVE" ? "start" : status === "PAUSED" ? "pause" : status === "COMPLETED" ? "end" : "update";
+    const confirmed = window.confirm(`${action === "end" ? "End" : action === "pause" ? "Pause" : "Start"} ${label}?`);
+
+    if (!confirmed) return;
+
+    setActionLoading(true);
+    setNotice("");
+
+    const { error } = await supabase.rpc("admin_set_round_status", {
+      p_round_number: roundNumber,
+      p_status: status,
+    });
+
+    if (error) {
+      setNotice(error.message);
+      setActionLoading(false);
+      return;
+    }
+
+    setNotice(`${label} status updated to ${status}.`);
+    await loadDashboardData();
+    setActionLoading(false);
   };
 
   const handleLockTeam = async () => {
@@ -371,6 +526,40 @@ export default function AdminDashboard() {
       ? Math.max(...liveResults.map((team) => Number(team.total_score || 0)))
       : 0;
 
+
+  const openView = (view: string) => {
+    setSelectedTeam(null);
+    setNotice("");
+    setActiveView(view);
+  };
+
+  const goBack = () => {
+    setActiveView("dashboard");
+    setSelectedTeam(null);
+  };
+
+  const detailRound = activeView.startsWith("round")
+    ? Number(activeView.replace("round", ""))
+    : 0;
+  const detailRoundMeta = ROUND_META[detailRound];
+  const detailRoundData = roundByNumber.get(detailRound);
+
+  const detailRoundScores = roundScores
+    .filter((score) => score.round_number === detailRound)
+    .sort((a, b) => Number(b.score) - Number(a.score));
+
+  const scoreByTeamAndRound = (teamId: string, roundNumber: number) =>
+    roundScores.find(
+      (score) => score.team_id === teamId && score.round_number === roundNumber
+    );
+
+  const roundEvaluation = ROUND_EVALUATION[detailRound] || [];
+
+  const readableBreakdown = (breakdown: Record<string, unknown>) =>
+    Object.entries(breakdown || {}).filter(
+      ([, value]) => typeof value === "number" || typeof value === "string"
+    );
+
   if (loading) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -409,6 +598,515 @@ export default function AdminDashboard() {
     );
   }
 
+
+  if (activeView !== "dashboard") {
+    const detailTitle =
+      activeView === "teams"
+        ? "Teams"
+        : activeView === "live"
+        ? "Live Results"
+        : activeView === "results"
+        ? "Results"
+        : activeView === "evaluation"
+        ? "Evaluation Details"
+        : activeView === "secrets"
+        ? "Secrets & Controls"
+        : activeView === "solutions"
+        ? "Solutions / Answer Key"
+        : activeView === "admins"
+        ? "Administrators"
+        : detailRoundMeta?.label || "Round";
+
+    return (
+      <main className="min-h-screen bg-black text-white">
+        <header className="border-b border-white/10">
+          <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-yellow-400 text-xs uppercase tracking-[0.3em]">
+                PROJECT: REDACTED²
+              </p>
+              <h1 className="text-2xl font-semibold mt-1">{detailTitle}</h1>
+              <p className="text-sm text-white/40 mt-1">{email}</p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={goBack} className="border border-white/15 rounded-lg px-4 py-2 text-sm hover:bg-white hover:text-black transition">
+                ← Dashboard
+              </button>
+              <button onClick={handleLogout} className="border border-white/15 rounded-lg px-4 py-2 text-sm hover:bg-white hover:text-black transition">
+                Logout
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          {(activeView === "round1" || activeView === "round2" || activeView === "round3" || activeView === "round4") && (
+            <>
+              <div className="mb-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-white/35">Round {detailRound}</p>
+                <h2 className="text-3xl font-semibold mt-2">{detailTitle}</h2>
+              </div>
+
+              {!detailRoundMeta?.available ? (
+                <section className="border border-dashed border-white/10 bg-[#080808] rounded-2xl p-8">
+                  <p className="text-xs uppercase tracking-widest text-white/30">Not classified</p>
+                  <h3 className="text-xl font-semibold mt-2">Round {detailRound} is reserved</h3>
+                  <p className="text-sm text-white/40 mt-2">
+                    Gameplay, scoring and admin controls can be added here after this round is finalized.
+                  </p>
+                </section>
+              ) : (
+                <>
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-widest text-white/35">Status</p>
+                    <p className="mt-2 font-semibold text-yellow-400">{detailRoundData?.status || "NOT STARTED"}</p>
+                  </div>
+                  <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-widest text-white/35">Maximum</p>
+                    <p className="mt-2 text-2xl font-semibold">{detailRoundData?.max_score ?? (detailRound === 1 ? 100 : 50)}</p>
+                  </div>
+                  <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-widest text-white/35">Started</p>
+                    <p className="mt-2 text-2xl font-semibold">{detailRoundData?.teams_started ?? 0}</p>
+                  </div>
+                  <div className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-widest text-white/35">Completed</p>
+                    <p className="mt-2 text-2xl font-semibold">{detailRoundData?.teams_completed ?? 0}</p>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-3">
+                  {(detailRoundData?.status === "NOT_STARTED" || !detailRoundData?.status) && (
+                    <button disabled={actionLoading} onClick={() => handleRoundStatus(detailRound, "LIVE")} className="rounded-xl bg-green-400 text-black px-5 py-3 font-bold disabled:opacity-40">Start Round</button>
+                  )}
+                  {detailRoundData?.status === "LIVE" && (
+                    <>
+                      <button disabled={actionLoading} onClick={() => handleRoundStatus(detailRound, "PAUSED")} className="rounded-xl border border-yellow-400/30 text-yellow-300 px-5 py-3 font-semibold disabled:opacity-40">Pause</button>
+                      <button disabled={actionLoading} onClick={() => handleRoundStatus(detailRound, "COMPLETED")} className="rounded-xl border border-red-400/30 text-red-300 px-5 py-3 font-semibold disabled:opacity-40">End Round</button>
+                    </>
+                  )}
+                  {detailRoundData?.status === "PAUSED" && (
+                    <>
+                      <button disabled={actionLoading} onClick={() => handleRoundStatus(detailRound, "LIVE")} className="rounded-xl bg-green-400 text-black px-5 py-3 font-bold disabled:opacity-40">Resume</button>
+                      <button disabled={actionLoading} onClick={() => handleRoundStatus(detailRound, "COMPLETED")} className="rounded-xl border border-red-400/30 text-red-300 px-5 py-3 font-semibold disabled:opacity-40">End Round</button>
+                    </>
+                  )}
+                </div>
+
+                <div className="grid lg:grid-cols-[1fr_360px] gap-5 mt-6">
+                  <section className="border border-white/10 bg-[#0b0b0b] rounded-2xl overflow-hidden">
+                    <div className="px-5 py-4 border-b border-white/10">
+                      <p className="text-xs uppercase tracking-[0.25em] text-white/35">Team Evaluation</p>
+                      <h3 className="text-xl font-semibold mt-1">Round {detailRound} scores</h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <div className="min-w-[620px]">
+                        <div className="grid grid-cols-[50px_1fr_100px_100px_100px] gap-3 px-5 py-3 border-b border-white/10 text-[10px] uppercase tracking-widest text-white/30">
+                          <span>#</span><span>Team</span><span>Score</span><span>Max</span><span>Status</span>
+                        </div>
+                        {detailRoundScores.length === 0 ? (
+                          <div className="px-5 py-8 text-sm text-white/35">No team scores recorded yet.</div>
+                        ) : (
+                          detailRoundScores.map((score, index) => {
+                            const team = teams.find((item) => item.id === score.team_id);
+                            return (
+                              <button key={score.id} onClick={() => team && setSelectedTeam(team)} className="w-full grid grid-cols-[50px_1fr_100px_100px_100px] gap-3 px-5 py-4 text-left border-b border-white/5 hover:bg-white/[0.03] items-center">
+                                <span className="text-white/35">{index + 1}</span>
+                                <div><p className="font-semibold">{team?.team_name || "Unknown Team"}</p><p className="text-xs text-yellow-400/60 tracking-widest mt-1">{team?.team_code || score.team_id}</p></div>
+                                <span className="font-semibold text-yellow-400">{formatScore(score.score)}</span>
+                                <span className="text-white/45">{formatScore(score.max_score)}</span>
+                                <span className={score.is_final ? "text-xs text-green-400" : "text-xs text-yellow-300"}>{score.is_final ? "FINAL" : "LIVE"}</span>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Evaluation Framework</p>
+                    <h3 className="text-xl font-semibold mt-1">How this round is scored</h3>
+                    <div className="mt-5 space-y-3">
+                      {roundEvaluation.map((criterion) => (
+                        <div key={criterion.label} className="flex items-center justify-between border-b border-white/5 pb-3">
+                          <span className="text-sm text-white/65">{criterion.label}</span>
+                          <span className="font-semibold">{criterion.max}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-between">
+                      <span className="text-sm text-white/40">Round maximum</span>
+                      <span className="text-xl font-bold text-yellow-400">{roundEvaluation.reduce((sum, item) => sum + item.max, 0)}</span>
+                    </div>
+                  </section>
+                </div>
+
+                {detailRoundScores.length > 0 && (
+                  <section className="mt-5 border border-white/10 bg-[#0b0b0b] rounded-2xl p-5">
+                    <p className="text-xs uppercase tracking-[0.25em] text-cyan-300">Recorded Breakdown</p>
+                    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3 mt-4">
+                      {detailRoundScores.slice(0, 6).map((score) => {
+                        const team = teams.find((item) => item.id === score.team_id);
+                        const entries = readableBreakdown(score.breakdown);
+                        return (
+                          <div key={`${score.id}-breakdown`} className="border border-white/8 rounded-xl p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="font-semibold truncate">{team?.team_name || "Unknown Team"}</p>
+                              <span className="text-yellow-400 font-semibold">{formatScore(score.score)}/{formatScore(score.max_score)}</span>
+                            </div>
+                            {entries.length > 0 ? (
+                              <div className="mt-3 space-y-2">
+                                {entries.map(([key, value]) => (
+                                  <div key={key} className="flex justify-between gap-3 text-xs">
+                                    <span className="text-white/35">{key.replaceAll("_", " ")}</span>
+                                    <span className="text-white/70">{String(value)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-white/30 mt-3">No breakdown stored.</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+                </>
+              )}
+            </>
+          )}
+
+          {activeView === "teams" && (
+            <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-5">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.25em] text-white/40">Operations</p>
+                  <h2 className="text-3xl font-semibold mt-1">Team Management</h2>
+                  <p className="text-sm text-white/35 mt-1">Select a team to lock, remove or move members.</p>
+                </div>
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search team, code or participant..." className="w-full sm:w-80 bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400/60" />
+              </div>
+              <div className="overflow-x-auto">
+                <div className="min-w-[760px]">
+                  <div className="grid grid-cols-[1fr_100px_110px_110px_40px] gap-4 px-5 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
+                    <span>Team</span><span>Members</span><span>Status</span><span>Round</span><span />
+                  </div>
+                  {filteredTeams.map((team) => (
+                    <button key={team.id} onClick={() => setSelectedTeam(team)} className="w-full grid grid-cols-[1fr_100px_110px_110px_40px] gap-4 px-5 py-5 text-left border-b border-white/5 hover:bg-white/[0.03] transition items-center">
+                      <div><p className="font-semibold">{team.team_name}</p><p className="text-xs text-yellow-400 mt-1 tracking-widest">{team.team_code}</p></div>
+                      <p className="text-sm text-white/70">{team.members.length}/4</p>
+                      <span className={team.status === "LOCKED" ? "text-xs font-semibold text-green-400" : "text-xs font-semibold text-yellow-400"}>{team.status}</span>
+                      <p className="text-xs text-white/50">R{team.current_round || 0}</p>
+                      <span className="text-white/30 text-lg">→</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeView === "live" && (
+            <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-white/10">
+                <p className="text-xs uppercase tracking-[0.25em] text-green-400">Live Scoring</p>
+                <h2 className="text-3xl font-semibold mt-1">Live Results</h2>
+              </div>
+              <div className="overflow-x-auto">
+                <div className="min-w-[850px]">
+                  <div className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
+                    <span>#</span><span>Team</span><span>R1</span><span>R2</span><span>R3</span><span>R4</span><span>Total</span>
+                  </div>
+                  {liveResults.map((team, index) => (
+                    <div key={team.team_id} className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-4 border-b border-white/5 items-center">
+                      <span className="text-white/40">{index + 1}</span>
+                      <div><p className="font-semibold">{team.team_name}</p><p className="text-xs text-yellow-400/70 tracking-widest">{team.team_code}</p></div>
+                      <span>{formatScore(team.round1_score)}</span><span>{formatScore(team.round2_score)}</span>
+                      <span className="text-white/35">{formatScore(team.round3_score)}</span><span className="text-white/35">{formatScore(team.round4_score)}</span>
+                      <span className="font-semibold text-yellow-400">{formatScore(team.total_score)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {activeView === "evaluation" && (
+            <div className="space-y-5">
+              <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-blue-300">Official Evaluation</p>
+                <h2 className="text-3xl font-semibold mt-1">Event Evaluation Criteria</h2>
+                <p className="text-sm text-white/40 mt-2">These are the criteria the adjudicators use across the investigation.</p>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-6">
+                  {EVENT_EVALUATION.map((criterion, index) => (
+                    <div key={criterion} className="border border-white/10 rounded-xl p-5">
+                      <p className="text-[10px] uppercase tracking-widest text-white/25">0{index + 1}</p>
+                      <p className="mt-2 font-semibold">{criterion}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <div className="grid lg:grid-cols-2 gap-5">
+                {[1, 2].map((roundNumber) => (
+                  <section key={roundNumber} className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                    <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Round {roundNumber}</p>
+                    <h3 className="text-2xl font-semibold mt-1">{ROUND_META[roundNumber].label}</h3>
+                    <div className="mt-5 space-y-3">
+                      {(ROUND_EVALUATION[roundNumber] || []).map((criterion) => (
+                        <div key={criterion.label} className="flex items-center justify-between border-b border-white/5 pb-3">
+                          <span className="text-sm text-white/60">{criterion.label}</span>
+                          <span className="font-bold text-yellow-400">{criterion.max}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-5 pt-4 border-t border-white/10 flex justify-between">
+                      <span className="text-sm text-white/35">Round maximum</span>
+                      <span className="font-bold">{(ROUND_EVALUATION[roundNumber] || []).reduce((sum, item) => sum + item.max, 0)}</span>
+                    </div>
+                  </section>
+                ))}
+              </div>
+
+              <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-white/35">Adjudicator note</p>
+                <p className="mt-3 text-sm leading-7 text-white/55">Round scores are the quantitative game score. Final adjudication should also consider the quality of the team’s evidence, accuracy of deduction, logical reasoning, speed, strategic decision-making and final presentation.</p>
+              </section>
+            </div>
+          )}
+
+          {activeView === "secrets" && (
+            <div className="space-y-5">
+              <section className="border border-red-500/20 bg-red-500/[0.03] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-red-300">ADMIN ONLY</p>
+                <h2 className="text-3xl font-semibold mt-1">Secrets & Hidden Controls</h2>
+                <p className="text-sm text-white/40 mt-2">Do not expose this screen to participants. These values are intentionally hidden from the player UI.</p>
+              </section>
+
+              <div className="grid lg:grid-cols-2 gap-5">
+                <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                  <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Round 1</p>
+                  <h3 className="text-2xl font-semibold mt-1">Hidden bonuses & controls</h3>
+                  <div className="mt-5 space-y-3">
+                    {R1_BONUSES_AND_CONTROLS.map((item) => (
+                      <div key={item.label} className="border border-white/8 rounded-xl p-4">
+                        <div className="flex justify-between gap-4"><span className="font-semibold">{item.label}</span><span className="text-yellow-400 font-bold">{item.value}</span></div>
+                        <p className="text-xs text-white/35 mt-2 leading-5">{item.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                  <p className="text-xs uppercase tracking-[0.25em] text-cyan-300">Round 2</p>
+                  <h3 className="text-2xl font-semibold mt-1">Hidden penalties & controls</h3>
+                  <div className="mt-5 space-y-3">
+                    {R2_BONUSES_AND_CONTROLS.map((item) => (
+                      <div key={item.label} className="border border-white/8 rounded-xl p-4">
+                        <div className="flex justify-between gap-4"><span className="font-semibold">{item.label}</span><span className="text-cyan-300 font-bold">{item.value}</span></div>
+                        <p className="text-xs text-white/35 mt-2 leading-5">{item.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+
+              <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-white/35">R2 hidden connection</p>
+                <h3 className="text-xl font-semibold mt-1">Archive cross-reference</h3>
+                <div className="mt-4 grid sm:grid-cols-3 gap-3">
+                  {[["E-10", "Preparation at 22:08"], ["E-14", "Restricted transfer infrastructure"], ["E-16", "Emergency network procedure"]].map(([id, detail]) => (
+                    <div key={id} className="border border-white/8 rounded-xl p-4"><p className="font-bold text-yellow-400">{id}</p><p className="text-xs text-white/45 mt-2">{detail}</p></div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeView === "solutions" && (
+            <div className="space-y-5">
+              <section className="border border-red-500/20 bg-red-500/[0.03] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-red-300">ADMIN ONLY — ANSWER KEY</p>
+                <h2 className="text-3xl font-semibold mt-1">Solutions</h2>
+                <p className="text-sm text-white/40 mt-2">Use this section for coordinator verification and manual evaluation. Never expose it to teams.</p>
+              </section>
+
+              <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
+                <div className="px-6 py-5 border-b border-white/10"><p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Round 1</p><h3 className="text-2xl font-semibold mt-1">MCQ Answer Key</h3></div>
+                <div className="p-5 grid lg:grid-cols-2 gap-3">
+                  {R1_MCQ_SOLUTIONS.map((row) => (
+                    <div key={row.id} className="border border-white/8 rounded-xl p-4">
+                      <div className="flex items-start justify-between gap-3"><div><span className="text-[10px] text-white/25 tracking-widest">{row.id} · {row.category}</span><p className="font-semibold mt-1">{row.title}</p></div><span className="text-yellow-400 font-bold text-right">{row.answer}</span></div>
+                      <p className="text-xs text-white/30 mt-3">Support: {row.support}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
+                <div className="px-6 py-5 border-b border-white/10"><p className="text-xs uppercase tracking-[0.25em] text-cyan-300">Round 2</p><h3 className="text-2xl font-semibold mt-1">Lead Answer Key</h3></div>
+                <div className="p-5 space-y-3">
+                  {R2_SOLUTION_ROWS.map((row) => (
+                    <div key={row.id} className="border border-white/8 rounded-xl p-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><span className="text-[10px] text-white/25 tracking-widest">LEAD {row.id} · {row.category}</span><p className="font-semibold mt-1">{row.title}</p></div><span className="text-cyan-300 font-bold">{row.answer}</span></div>
+                      <p className="text-xs text-white/35 mt-3 leading-5">{row.support}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="mx-5 mb-5 border border-yellow-500/20 bg-yellow-500/[0.03] rounded-xl p-5"><p className="text-xs uppercase tracking-widest text-yellow-400">Final trail</p><p className="text-2xl font-black mt-2">{R2_FINAL_SOLUTION}</p><p className="text-xs text-white/35 mt-2">7 points · final answer is intentionally not shown to teams during the round.</p></div>
+              </section>
+            </div>
+          )}
+
+          {activeView === "admins" && (
+            <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
+              <div className="px-6 py-5 border-b border-white/10"><p className="text-xs uppercase tracking-[0.25em] text-purple-300">Access Control</p><h2 className="text-3xl font-semibold mt-1">Administrators</h2><p className="text-sm text-white/35 mt-2">Accounts currently authorized to enter the admin dashboard.</p></div>
+              <div className="p-5 space-y-3">
+                {admins.length === 0 ? <p className="text-sm text-white/35">No admin records returned.</p> : admins.map((admin, index) => (
+                  <div key={admin.id} className="border border-white/8 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div><p className="text-xs text-white/25 uppercase tracking-widest">Admin {index + 1}</p><p className="font-semibold mt-1">{admin.email}</p><p className="text-xs text-white/25 mt-1 break-all">{admin.id}</p></div>
+                    <div className="flex items-center gap-3"><span className="px-3 py-1 rounded-full border border-green-500/20 bg-green-500/[0.05] text-xs text-green-400">ACTIVE</span><span className="text-xs text-white/45 uppercase tracking-widest">{admin.role}</span></div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {activeView === "results" && (
+            <div className="space-y-5">
+              <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-blue-300">Official Evaluation</p>
+                <h2 className="text-3xl font-semibold mt-1">Evaluation Criteria</h2>
+                <p className="text-sm text-white/40 mt-2">The final adjudication considers the same core criteria across the investigation.</p>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-6">
+                  {EVENT_EVALUATION.map((criterion) => (
+                    <div key={criterion} className="border border-white/10 rounded-xl p-4">
+                      <p className="text-sm text-white/70">{criterion}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-blue-300">Scoring</p>
+                <h2 className="text-3xl font-semibold mt-1">Round Results</h2>
+                <div className="grid md:grid-cols-2 gap-4 mt-6">
+                  {[1,2,3,4].map((n) => {
+                    const r = roundByNumber.get(n);
+                    const criteria = ROUND_EVALUATION[n] || [];
+                    return (
+                      <div key={n} className="border border-white/10 rounded-xl p-5">
+                        <p className="text-xs uppercase tracking-widest text-white/30">Round {n}</p>
+                        <h3 className="font-semibold mt-1">{ROUND_META[n].label}</h3>
+                        {ROUND_META[n].available ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-4 mt-5">
+                              <div><p className="text-xs text-white/30">Average</p><p className="mt-1 font-semibold">{formatScore(r?.average_score)}</p></div>
+                              <div><p className="text-xs text-white/30">Highest</p><p className="mt-1 font-semibold text-yellow-400">{formatScore(r?.highest_score)}</p></div>
+                            </div>
+                            <div className="mt-5 pt-4 border-t border-white/10 space-y-2">
+                              {criteria.map((criterion) => (
+                                <div key={criterion.label} className="flex justify-between text-xs">
+                                  <span className="text-white/35">{criterion.label}</span>
+                                  <span className="text-white/70">{criterion.max}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        ) : <p className="text-sm text-white/30 mt-5">Scoring will be added after classification.</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
+                <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Leaderboard</p>
+                <h2 className="text-2xl font-semibold mt-1">Current Team Totals</h2>
+                <div className="overflow-x-auto mt-5">
+                  <div className="min-w-[820px]">
+                    <div className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-3 px-4 py-3 border-b border-white/10 text-[10px] uppercase tracking-widest text-white/30">
+                      <span>#</span><span>Team</span><span>R1</span><span>R2</span><span>R3</span><span>R4</span><span>Total</span>
+                    </div>
+                    {liveResults.map((team, index) => (
+                      <div key={`result-${team.team_id}`} className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-3 px-4 py-4 border-b border-white/5 items-center">
+                        <span className="text-white/35">{index + 1}</span>
+                        <div><p className="font-semibold">{team.team_name}</p><p className="text-xs text-yellow-400/60 tracking-widest mt-1">{team.team_code}</p></div>
+                        <span>{formatScore(team.round1_score)}</span><span>{formatScore(team.round2_score)}</span><span className="text-white/35">{formatScore(team.round3_score)}</span><span className="text-white/35">{formatScore(team.round4_score)}</span><span className="font-semibold text-yellow-400">{formatScore(team.total_score)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
+
+        {selectedTeam && (
+          <div className="fixed inset-0 z-50">
+            <button className="absolute inset-0 bg-black/70" onClick={() => setSelectedTeam(null)} aria-label="Close panel" />
+            <aside className="absolute top-0 right-0 h-full w-full max-w-xl bg-[#0a0a0a] border-l border-white/10 overflow-y-auto">
+              <div className="sticky top-0 z-10 bg-[#0a0a0a]/95 backdrop-blur border-b border-white/10 px-6 py-5 flex justify-between items-start">
+                <div><p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Team Details</p><h2 className="text-2xl font-semibold mt-2">{selectedTeam.team_name}</h2><p className="text-sm text-white/40 mt-1">{selectedTeam.team_code}</p></div>
+                <button onClick={() => setSelectedTeam(null)} className="text-white/40 hover:text-white text-xl">✕</button>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="border border-white/10 rounded-xl p-4"><p className="text-xs text-white/35 uppercase tracking-widest">Status</p><p className={`mt-2 font-semibold ${selectedTeam.status === "LOCKED" ? "text-green-400" : "text-yellow-400"}`}>{selectedTeam.status}</p></div>
+                  <div className="border border-white/10 rounded-xl p-4"><p className="text-xs text-white/35 uppercase tracking-widest">Members</p><p className="mt-2 font-semibold">{selectedTeam.members.length} / 4</p></div>
+                  <div className="border border-white/10 rounded-xl p-4"><p className="text-xs text-white/35 uppercase tracking-widest">Team Code</p><p className="mt-2 font-semibold text-yellow-400">{selectedTeam.team_code}</p></div>
+                  <div className="border border-white/10 rounded-xl p-4"><p className="text-xs text-white/35 uppercase tracking-widest">Current Round</p><p className="mt-2 font-semibold">{selectedTeam.current_round ? `Round ${selectedTeam.current_round}` : "Not started"}</p></div>
+                </div>
+                <section>
+                  <h3 className="font-semibold mb-3">Members</h3>
+                  <div className="space-y-3">
+                    {selectedTeam.members.map((member) => (
+                      <div key={member.id} className="border border-white/10 rounded-xl p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div><p className="font-semibold">{member.name}</p><p className="text-sm text-white/45 mt-1">{member.email}</p></div>
+                          {selectedTeam.status === "FORMING" && <button disabled={actionLoading} onClick={() => handleRemoveMember(member)} className="text-xs text-red-400">Remove</button>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 mt-4 text-xs">
+                          <div><p className="text-white/30">College</p><p className="mt-1 text-white/70">{member.college_name || "—"}</p></div>
+                          <div><p className="text-white/30">Department</p><p className="mt-1 text-white/70">{member.department || "—"}</p></div>
+                          <div><p className="text-white/30">Year</p><p className="mt-1 text-white/70">{member.year_of_study || "—"}</p></div>
+                          <div><p className="text-white/30">Contact</p><p className="mt-1 text-white/70">{member.whatsapp_number || "—"}</p></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+                {selectedTeam.status === "FORMING" && availableMoveTargets.length > 0 && (
+                  <section className="border border-white/10 rounded-xl p-5">
+                    <p className="text-xs uppercase tracking-widest text-white/35">Team Management</p>
+                    <h3 className="font-semibold mt-2">Move Member</h3>
+                    <div className="mt-4 space-y-3">
+                      <select value={moveMemberId} onChange={(e) => setMoveMemberId(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm"><option value="">Select member</option>{selectedTeam.members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                      <select value={targetTeamId} onChange={(e) => setTargetTeamId(e.target.value)} className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm"><option value="">Select target team</option>{availableMoveTargets.map(t => <option key={t.id} value={t.id}>{t.team_name} — {t.members.length}/4</option>)}</select>
+                      <button disabled={actionLoading || !moveMemberId || !targetTeamId} onClick={handleMoveMember} className="w-full rounded-xl bg-white text-black py-3 font-semibold disabled:opacity-40">Move Member</button>
+                    </div>
+                  </section>
+                )}
+                {selectedTeam.status === "FORMING" && (
+                  <section className="border border-yellow-500/20 bg-yellow-500/[0.04] rounded-xl p-5">
+                    <p className="text-xs uppercase tracking-widest text-yellow-400">Finalize Team</p>
+                    <h3 className="font-semibold mt-2">Lock this team</h3>
+                    <p className="text-sm text-white/40 mt-2">Once locked, members cannot leave, move or be removed.</p>
+                    <button disabled={actionLoading || selectedTeam.members.length < 2} onClick={handleLockTeam} className="w-full mt-4 rounded-xl bg-yellow-400 text-black py-3 font-bold disabled:opacity-40">{selectedTeam.members.length < 2 ? "Need at Least 2 Members" : actionLoading ? "Processing..." : "Lock Team"}</button>
+                  </section>
+                )}
+                {selectedTeam.status === "LOCKED" && <section className="border border-green-500/20 bg-green-500/[0.04] rounded-xl p-5"><p className="text-xs uppercase tracking-widest text-green-400">Team Secured</p><h3 className="font-semibold mt-2">Team is locked</h3></section>}
+                {notice && <div className="border border-white/10 rounded-xl p-4 text-sm text-white/70">{notice}</div>}
+              </div>
+            </aside>
+          </div>
+        )}
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-black text-white">
       <header className="border-b border-white/10">
@@ -428,6 +1126,7 @@ export default function AdminDashboard() {
               onClick={() => {
                 loadDashboardData();
                 loadTeams();
+                loadAdmins();
               }}
               className="border border-white/15 rounded-lg px-4 py-2 text-sm hover:bg-white hover:text-black transition"
             >
@@ -496,9 +1195,10 @@ export default function AdminDashboard() {
               const available = meta.available;
 
               return (
-                <div
+                <button
                   key={roundNumber}
-                  className={`rounded-2xl border p-6 ${
+                  onClick={() => openView(`round${roundNumber}`)}
+                  className={`w-full text-left rounded-2xl border p-6 hover:border-yellow-400/30 transition ${
                     available
                       ? "border-white/10 bg-[#0b0b0b]"
                       : "border-white/5 bg-[#080808] opacity-75"
@@ -597,284 +1297,62 @@ export default function AdminDashboard() {
                       </p>
                     </div>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>
         </section>
 
-        {/* TEAMS CARD */}
-        <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
-          <div className="px-6 py-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-white/40">
-                Operations
-              </p>
-              <h2 className="text-2xl font-semibold mt-1">Teams</h2>
-              <p className="text-sm text-white/35 mt-1">
-                Team membership, locking and movement controls.
-              </p>
-            </div>
+        {/* NAVIGATION CARDS */}
+        <section className="grid md:grid-cols-3 gap-4">
+          <button onClick={() => openView("teams")} className="text-left border border-white/10 bg-[#080808] rounded-2xl p-6 hover:border-yellow-400/30 transition">
+            <p className="text-xs uppercase tracking-[0.25em] text-white/40">Operations</p>
+            <h2 className="text-2xl font-semibold mt-1">Teams</h2>
+            <p className="text-sm text-white/35 mt-2">Manage members, lock teams and move participants.</p>
+            <p className="text-white/30 text-xl mt-5">→</p>
+          </button>
 
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search team, code or participant..."
-              className="w-full sm:w-80 bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400/60"
-            />
-          </div>
+          <button onClick={() => openView("live")} className="text-left border border-white/10 bg-[#080808] rounded-2xl p-6 hover:border-green-400/30 transition">
+            <p className="text-xs uppercase tracking-[0.25em] text-green-400">Live</p>
+            <h2 className="text-2xl font-semibold mt-1">Live Results</h2>
+            <p className="text-sm text-white/35 mt-2">Open the live leaderboard and current round scores.</p>
+            <p className="text-white/30 text-xl mt-5">→</p>
+          </button>
 
-          <div className="grid sm:grid-cols-3 border-b border-white/10">
-            <div className="p-5 border-b sm:border-b-0 sm:border-r border-white/10">
-              <p className="text-xs uppercase tracking-widest text-white/35">
-                Total
-              </p>
-              <p className="text-2xl font-semibold mt-2">{teams.length}</p>
-            </div>
-
-            <div className="p-5 border-b sm:border-b-0 sm:border-r border-white/10">
-              <p className="text-xs uppercase tracking-widest text-white/35">
-                Forming
-              </p>
-              <p className="text-2xl font-semibold mt-2 text-yellow-400">
-                {formingTeams}
-              </p>
-            </div>
-
-            <div className="p-5">
-              <p className="text-xs uppercase tracking-widest text-white/35">
-                Locked
-              </p>
-              <p className="text-2xl font-semibold mt-2 text-green-400">
-                {lockedTeams}
-              </p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <div className="min-w-[760px]">
-              <div className="grid grid-cols-[1fr_100px_110px_110px_40px] gap-4 px-6 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
-                <span>Team</span>
-                <span>Members</span>
-                <span>Status</span>
-                <span>Round</span>
-                <span />
-              </div>
-
-              {teamsLoading ? (
-                <div className="px-6 py-12 text-center text-white/40">
-                  Loading teams...
-                </div>
-              ) : filteredTeams.length === 0 ? (
-                <div className="px-6 py-12 text-center text-white/40">
-                  No teams found.
-                </div>
-              ) : (
-                filteredTeams.map((team) => (
-                  <button
-                    key={team.id}
-                    onClick={() => {
-                      setSelectedTeam(team);
-                      setNotice("");
-                      setMoveMemberId("");
-                      setTargetTeamId("");
-                    }}
-                    className="w-full grid grid-cols-[1fr_100px_110px_110px_40px] gap-4 px-6 py-5 text-left border-b border-white/5 last:border-b-0 hover:bg-white/[0.03] transition items-center"
-                  >
-                    <div>
-                      <p className="font-semibold">{team.team_name}</p>
-                      <p className="text-xs text-yellow-400 mt-1 tracking-widest">
-                        {team.team_code}
-                      </p>
-                    </div>
-
-                    <p className="text-sm text-white/70">
-                      {team.members.length}/4
-                    </p>
-
-                    <span
-                      className={`text-xs font-semibold uppercase tracking-wider ${
-                        team.status === "LOCKED"
-                          ? "text-green-400"
-                          : "text-yellow-400"
-                      }`}
-                    >
-                      {team.status}
-                    </span>
-
-                    <p className="text-xs text-white/50">
-                      R{team.current_round || 0}
-                    </p>
-
-                    <span className="text-white/30 text-lg">→</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* LIVE RESULTS */}
-        <section className="border border-white/10 bg-[#080808] rounded-2xl overflow-hidden">
-          <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-[0.25em] text-green-400">
-                Live
-              </p>
-              <h2 className="text-2xl font-semibold mt-1">Live Results</h2>
-              <p className="text-sm text-white/35 mt-1">
-                Current leaderboard based on saved round scores.
-              </p>
-            </div>
-
-            {dashboardLoading && (
-              <span className="text-xs text-white/30">Refreshing…</span>
-            )}
-          </div>
-
-          <div className="overflow-x-auto">
-            <div className="min-w-[850px]">
-              <div className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-3 border-b border-white/10 text-[11px] uppercase tracking-widest text-white/35">
-                <span>#</span>
-                <span>Team</span>
-                <span>R1</span>
-                <span>R2</span>
-                <span>R3</span>
-                <span>R4</span>
-                <span>Total</span>
-              </div>
-
-              {liveResults.length === 0 ? (
-                <div className="px-6 py-12 text-center text-white/40">
-                  No live scores yet.
-                </div>
-              ) : (
-                liveResults.map((team, index) => (
-                  <div
-                    key={team.team_id}
-                    className="grid grid-cols-[60px_1fr_90px_90px_90px_90px_110px] gap-4 px-6 py-4 border-b border-white/5 last:border-b-0 items-center"
-                  >
-                    <span
-                      className={`font-semibold ${
-                        index === 0
-                          ? "text-yellow-400"
-                          : index === 1
-                          ? "text-white/70"
-                          : index === 2
-                          ? "text-orange-300"
-                          : "text-white/40"
-                      }`}
-                    >
-                      {index + 1}
-                    </span>
-
-                    <div>
-                      <p className="font-semibold">{team.team_name}</p>
-                      <p className="text-xs text-yellow-400/80 tracking-widest mt-1">
-                        {team.team_code}
-                      </p>
-                    </div>
-
-                    <span className="text-white/70">
-                      {formatScore(team.round1_score)}
-                    </span>
-
-                    <span className="text-white/70">
-                      {formatScore(team.round2_score)}
-                    </span>
-
-                    <span className="text-white/30">
-                      {team.round3_score > 0 ? formatScore(team.round3_score) : "—"}
-                    </span>
-
-                    <span className="text-white/30">
-                      {team.round4_score > 0 ? formatScore(team.round4_score) : "—"}
-                    </span>
-
-                    <span className="font-semibold text-yellow-400">
-                      {formatScore(team.total_score)}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* RESULTS */}
-        <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-blue-300">
-              Scoring
-            </p>
+          <button onClick={() => openView("results")} className="text-left border border-white/10 bg-[#080808] rounded-2xl p-6 hover:border-blue-300/30 transition">
+            <p className="text-xs uppercase tracking-[0.25em] text-blue-300">Scoring</p>
             <h2 className="text-2xl font-semibold mt-1">Results</h2>
-            <p className="text-sm text-white/35 mt-1">
-              Round-wise scores now, final winner calculation later.
-            </p>
-          </div>
+            <p className="text-sm text-white/35 mt-2">Round-wise results and final winner calculation.</p>
+            <p className="text-white/30 text-xl mt-5">→</p>
+          </button>
 
-          <div className="grid md:grid-cols-2 gap-4 mt-6">
-            {[1, 2, 3, 4].map((roundNumber) => {
-              const round = roundByNumber.get(roundNumber);
-              const available = ROUND_META[roundNumber].available;
+          <button onClick={() => openView("evaluation")} className="text-left border border-white/10 bg-[#080808] rounded-2xl p-6 hover:border-blue-300/30 transition">
+            <p className="text-xs uppercase tracking-[0.25em] text-blue-300">Judging</p>
+            <h2 className="text-2xl font-semibold mt-1">Evaluation Details</h2>
+            <p className="text-sm text-white/35 mt-2">Official event criteria and round-by-round scoring weights.</p>
+            <p className="text-white/30 text-xl mt-5">→</p>
+          </button>
 
-              return (
-                <div
-                  key={roundNumber}
-                  className="border border-white/10 rounded-xl p-5"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs uppercase tracking-widest text-white/30">
-                        Round {roundNumber}
-                      </p>
-                      <h3 className="font-semibold mt-1">
-                        {ROUND_META[roundNumber].label}
-                      </h3>
-                    </div>
+          <button onClick={() => openView("secrets")} className="text-left border border-red-500/15 bg-[#080808] rounded-2xl p-6 hover:border-red-400/30 transition">
+            <p className="text-xs uppercase tracking-[0.25em] text-red-300">Restricted</p>
+            <h2 className="text-2xl font-semibold mt-1">Secrets & Controls</h2>
+            <p className="text-sm text-white/35 mt-2">Hidden bonuses, hint costs, penalties and admin-only mechanics.</p>
+            <p className="text-white/30 text-xl mt-5">→</p>
+          </button>
 
-                    <span
-                      className={`text-[10px] uppercase tracking-widest border rounded-full px-3 py-1.5 ${
-                        available
-                          ? statusClass(round?.status || "NOT STARTED")
-                          : "text-white/35 border-white/10"
-                      }`}
-                    >
-                      {available
-                        ? round?.status || "NOT STARTED"
-                        : "CLASSIFY LATER"}
-                    </span>
-                  </div>
+          <button onClick={() => openView("solutions")} className="text-left border border-red-500/15 bg-[#080808] rounded-2xl p-6 hover:border-red-400/30 transition">
+            <p className="text-xs uppercase tracking-[0.25em] text-red-300">Restricted</p>
+            <h2 className="text-2xl font-semibold mt-1">Solutions / Answer Key</h2>
+            <p className="text-sm text-white/35 mt-2">R1 MCQ answers, R2 lead solutions and final trail.</p>
+            <p className="text-white/30 text-xl mt-5">→</p>
+          </button>
 
-                  {available ? (
-                    <div className="grid grid-cols-2 gap-3 mt-5">
-                      <div>
-                        <p className="text-xs text-white/30">
-                          Average
-                        </p>
-                        <p className="mt-1 font-semibold">
-                          {formatScore(round?.average_score)}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-white/30">
-                          Highest
-                        </p>
-                        <p className="mt-1 font-semibold text-yellow-400">
-                          {formatScore(round?.highest_score)}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="mt-5 text-sm text-white/35">
-                      Scoring schema will be added once this round is classified.
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <button onClick={() => openView("admins")} className="text-left border border-white/10 bg-[#080808] rounded-2xl p-6 hover:border-purple-400/30 transition">
+            <p className="text-xs uppercase tracking-[0.25em] text-purple-300">Access Control</p>
+            <h2 className="text-2xl font-semibold mt-1">Administrators</h2>
+            <p className="text-sm text-white/35 mt-2">View the accounts currently authorized for admin access.</p>
+            <p className="text-white/30 text-xl mt-5">→</p>
+          </button>
         </section>
 
         {/* FINAL WINNER PLACEHOLDER */}
@@ -970,6 +1448,38 @@ export default function AdminDashboard() {
                   </p>
                 </div>
               </div>
+
+              <section className="border border-white/10 rounded-xl p-5">
+                <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Evaluation Record</p>
+                <h3 className="font-semibold mt-2">Round-by-round scoring</h3>
+                <div className="mt-4 space-y-3">
+                  {[1, 2, 3, 4].map((roundNumber) => {
+                    const score = scoreByTeamAndRound(selectedTeam.id, roundNumber);
+                    const criteria = ROUND_EVALUATION[roundNumber] || [];
+                    return (
+                      <div key={roundNumber} className="border border-white/8 rounded-xl p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs uppercase tracking-widest text-white/30">Round {roundNumber}</p>
+                            <p className="font-semibold mt-1">{ROUND_META[roundNumber].label}</p>
+                          </div>
+                          <p className="text-lg font-bold text-yellow-400">{score ? `${formatScore(score.score)} / ${formatScore(score.max_score)}` : "—"}</p>
+                        </div>
+                        {score && criteria.length > 0 && (
+                          <div className="mt-4 pt-3 border-t border-white/8 space-y-2">
+                            {criteria.map((criterion) => (
+                              <div key={criterion.label} className="flex justify-between text-xs">
+                                <span className="text-white/35">{criterion.label}</span>
+                                <span className="text-white/60">max {criterion.max}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
 
               <section>
                 <div className="flex items-center justify-between mb-3">
