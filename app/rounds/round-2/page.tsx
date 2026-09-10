@@ -1637,7 +1637,8 @@ export default function Round2Wrapper() {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.replace("/login"); return; }
-      const { data: t } = await supabase.rpc("get_my_team");
+      const { data: tRows } = await supabase.rpc("get_my_team");
+      const t = Array.isArray(tRows) ? tRows[0] : tRows;
       if (!t?.team_id) { router.replace("/lobby"); return; }
       setTeam(t);
       const { data: rs } = await supabase.rpc("student_get_round_state", { p_round_number: 2 });

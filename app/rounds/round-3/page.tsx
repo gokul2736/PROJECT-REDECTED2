@@ -155,7 +155,8 @@ export default function Page() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/login"); return; }
     
-    const { data: team, error: te } = await supabase.rpc("get_my_team");
+    const { data: teamRows, error: te } = await supabase.rpc("get_my_team");
+    const team = Array.isArray(teamRows) ? teamRows[0] : teamRows;
     if (te || !team?.team_id) {
       setError("You are not assigned to a team. Return to the team lobby.");
       setLoading(false);
