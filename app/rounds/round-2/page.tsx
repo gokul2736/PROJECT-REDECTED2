@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 interface Clue {
   id: string;
@@ -478,7 +480,7 @@ function buildScrambledLeads(seedText: string) {
   });
 }
 
-export default function Round2FollowTheTrail({
+function Round2FollowTheTrail({
   discoveredClues = [],
   onCompleteRound,
   teamCode = "",
@@ -1622,4 +1624,69 @@ export default function Round2FollowTheTrail({
       </AnimatePresence>
     </div>
   );
+}
+
+export default function Round2Wrapper() {
+  const router = useRouter();
+  const [team, setTeam] = useState<any>(null);
+  const [roundState, setRoundState] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let interval: any;
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.replace("/login"); return; }
+      const { data: t } = await supabase.rpc("get_my_team");
+      if (!t?.team_id) { router.replace("/lobby"); return; }
+      setTeam(t);
+      const { data: rs } = await supabase.rpc("student_get_round_state", { p_round_number: 2 });
+      if (rs) setRoundState(rs);
+      setLoading(false);
+
+      interval = setInterval(async () => {
+        const { data: pollRs } = await supabase.rpc("student_get_round_state", { p_round_number: 2 });
+        if (pollRs) setRoundState(pollRs);
+      }, 4000);
+    }
+    load();
+    return () => clearInterval(interval);
+  }, [router]);
+
+  const handleComplete = async (score: number, metrics: any) => {
+    if (!team) return;
+    await supabase.rpc("student_submit_round", {
+      p_round_number: 2,
+      p_metadata: { officialScore: score, metrics }
+    });
+    setRoundState((prev: any) => ({ ...prev, round_status: "COMPLETED", score_final: true }));
+  };
+
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center bg-black text-amber-500 tracking-[0.2em] font-sans">LOADING ROUND 02...</div>;
+  }
+
+  if (roundState?.round_status === "COMPLETED" || roundState?.score_final) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-black p-8 text-center text-white font-sans">
+        <h1 className="text-3xl font-black text-amber-500 mb-4">ROUND 02 // SUBMITTED</h1>
+        <p className="text-zinc-400">Your team's investigation has been locked and recorded.</p>
+        <button onClick={() => router.push("/lobby")} className="mt-8 border border-amber-600 bg-amber-950/20 px-6 py-3 text-amber-500 transition hover:bg-amber-600 hover:text-black">
+          RETURN TO LOBBY
+        </button>
+      </div>
+    );
+  }
+
+  if (roundState?.round_status !== "LIVE") {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-black p-8 text-center text-white font-sans">
+        <h1 className="text-3xl font-black text-amber-500 mb-4">ROUND 02 // NOT ACTIVE</h1>
+        <p className="text-zinc-400">Waiting for Admin to start the round...</p>
+        <div className="mt-8 animate-spin h-8 w-8 rounded-full border-t-2 border-amber-500 border-opacity-50 mx-auto"></div>
+      </div>
+    );
+  }
+
+  return <Round2FollowTheTrail teamCode={team.team_code} onCompleteRound={handleComplete} />;
 }
