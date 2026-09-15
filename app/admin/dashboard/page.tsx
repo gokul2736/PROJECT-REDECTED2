@@ -86,6 +86,11 @@ type SolutionRow = {
   category?: string;
 };
 
+const OFFICIAL_TEAM_CODES = new Set([
+  "3BAD80", "4FB494", "394F00", "106D4E", "A9F225", "D3223F",
+  "2FE641", "48A936", "AAFDC2", "960D24", "39600C", "9B2EA9"
+]);
+
 const EVENT_EVALUATION: string[] = [
   "Evidence collected",
   "Accuracy of the final deduction",
@@ -235,6 +240,7 @@ export default function AdminDashboard() {
   const [errorMessage, setErrorMessage] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
+  const [officialOnly, setOfficialOnly] = useState(true);
 
   const [moveMemberId, setMoveMemberId] = useState("");
   const [targetTeamId, setTargetTeamId] = useState("");
@@ -503,12 +509,30 @@ export default function AdminDashboard() {
     setActionLoading(false);
   };
 
+  const handleDeleteTeam = async (teamId: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this team?")) return;
+    setActionLoading(true);
+    const { error } = await supabase.from("teams").delete().eq("id", teamId);
+    if (error) {
+      setNotice("Delete error: " + error.message);
+    } else {
+      setNotice("Team deleted successfully.");
+      await loadTeams();
+      setSelectedTeam(null);
+    }
+    setActionLoading(false);
+  };
+
   const filteredTeams = useMemo(() => {
     const query = search.trim().toLowerCase();
+    let list = teams;
+    if (officialOnly) {
+      list = list.filter((team) => OFFICIAL_TEAM_CODES.has(team.team_code));
+    }
 
-    if (!query) return teams;
+    if (!query) return list;
 
-    return teams.filter((team) => {
+    return list.filter((team) => {
       return (
         team.team_name.toLowerCase().includes(query) ||
         team.team_code.toLowerCase().includes(query) ||
@@ -519,7 +543,7 @@ export default function AdminDashboard() {
         )
       );
     });
-  }, [teams, search]);
+  }, [teams, search, officialOnly]);
 
   const totalMembers = teams.reduce(
     (sum, team) => sum + team.members.length,
@@ -626,8 +650,6 @@ export default function AdminDashboard() {
         ? "Results"
         : activeView === "evaluation"
         ? "Evaluation Details"
-        : activeView === "secrets"
-        ? "Secrets & Controls"
         : activeView === "solutions"
         ? "Solutions / Answer Key"
         : activeView === "admins"
@@ -804,7 +826,20 @@ export default function AdminDashboard() {
                   <h2 className="text-3xl font-semibold mt-1">Team Management</h2>
                   <p className="text-sm text-white/35 mt-1">Select a team to lock, remove or move members.</p>
                 </div>
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search team, code or participant..." className="w-full sm:w-80 bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400/60" />
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setOfficialOnly(!officialOnly)}
+                    className={`px-3 py-2 rounded-xl text-xs font-mono transition border ${
+                      officialOnly
+                        ? "bg-yellow-400/15 border-yellow-400/40 text-yellow-400 font-bold"
+                        : "bg-white/5 border-white/10 text-white/50"
+                    }`}
+                  >
+                    {officialOnly ? "✓ Official 12 Teams Only" : "Showing All (Including Duplicates)"}
+                  </button>
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search team, code or participant..." className="w-full sm:w-80 bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-yellow-400/60" />
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <div className="min-w-[760px]">
@@ -892,10 +927,6 @@ export default function AdminDashboard() {
                 <p className="mt-3 text-sm leading-7 text-white/55">Round scores are the quantitative game score. Final adjudication should also consider the quality of the team’s evidence, accuracy of deduction, logical reasoning, speed, strategic decision-making and final presentation.</p>
               </section>
             </div>
-          )}
-
-          {activeView === "secrets" && (
-            <AdminSecretsPanel teams={liveResults} />
           )}
 
           {activeView === "solutions" && (
@@ -1071,6 +1102,18 @@ export default function AdminDashboard() {
                   </section>
                 )}
                 {selectedTeam.status === "LOCKED" && <section className="border border-green-500/20 bg-green-500/[0.04] rounded-xl p-5"><p className="text-xs uppercase tracking-widest text-green-400">Team Secured</p><h3 className="font-semibold mt-2">Team is locked</h3></section>}
+                <section className="border border-red-500/20 bg-red-500/[0.04] rounded-xl p-5">
+                  <p className="text-xs uppercase tracking-widest text-red-400">Danger Zone</p>
+                  <h3 className="font-semibold mt-2">Delete Team</h3>
+                  <p className="text-sm text-white/40 mt-2">Permanently remove this team from the database.</p>
+                  <button
+                    disabled={actionLoading}
+                    onClick={() => handleDeleteTeam(selectedTeam.id)}
+                    className="w-full mt-4 rounded-xl bg-red-600/80 hover:bg-red-600 text-white py-3 font-bold disabled:opacity-40 transition text-sm"
+                  >
+                    Delete Team Permanently
+                  </button>
+                </section>
                 {notice && <div className="border border-white/10 rounded-xl p-4 text-sm text-white/70">{notice}</div>}
               </div>
             </aside>
@@ -1303,13 +1346,6 @@ export default function AdminDashboard() {
             <p className="text-xs uppercase tracking-[0.25em] text-blue-300">Judging</p>
             <h2 className="text-2xl font-semibold mt-1">Evaluation Details</h2>
             <p className="text-sm text-white/35 mt-2">Official event criteria and round-by-round scoring weights.</p>
-            <p className="text-white/30 text-xl mt-5">→</p>
-          </button>
-
-          <button onClick={() => openView("secrets")} className="text-left border border-red-500/15 bg-[#080808] rounded-2xl p-6 hover:border-red-400/30 transition">
-            <p className="text-xs uppercase tracking-[0.25em] text-red-300">Restricted</p>
-            <h2 className="text-2xl font-semibold mt-1">Secrets & Controls</h2>
-            <p className="text-sm text-white/35 mt-2">Hidden bonuses, hint costs, penalties and admin-only mechanics.</p>
             <p className="text-white/30 text-xl mt-5">→</p>
           </button>
 
@@ -1627,335 +1663,5 @@ export default function AdminDashboard() {
         </div>
       )}
     </main>
-  );
-}
-
-function AdminSecretsPanel({ teams }: { teams: LiveResult[] }) {
-  const [selectedTeamId, setSelectedTeamId] = useState("");
-  const [activeRound, setActiveRound] = useState(1);
-  const [saving, setSaving] = useState(false);
-
-  // R1 state
-  const [r1Secrets, setR1Secrets] = useState({
-    speed_bonus_enabled: false,
-    no_hint_bonus_enabled: false,
-    secret_bonus_enabled: false,
-    secret_penalty_enabled: false,
-  });
-  const [r1Base, setR1Base] = useState(0);
-
-  // R2 state
-  const [r2Base, setR2Base] = useState(0);
-  const [r2Bonus, setR2Bonus] = useState(0);
-
-  // R3 state
-  const [r3Base, setR3Base] = useState(0);
-  const [r3Bonus, setR3Bonus] = useState(0);
-
-  // Load scores for selected team
-  useEffect(() => {
-    if (!selectedTeamId) return;
-    async function load() {
-      // Load R1 secrets
-      const { data: s1 } = await supabase.rpc("admin_get_team_secrets", {
-        p_team_id: selectedTeamId, p_round_number: 1,
-      });
-      if (s1) setR1Secrets({
-        speed_bonus_enabled: !!s1.speed_bonus_enabled,
-        no_hint_bonus_enabled: !!s1.no_hint_bonus_enabled,
-        secret_bonus_enabled: !!s1.secret_bonus_enabled,
-        secret_penalty_enabled: !!s1.secret_penalty_enabled,
-      });
-
-      // Load all round submissions
-      const { data: subs } = await supabase
-        .from("team_round_submissions")
-        .select("round_number, score, metadata")
-        .eq("team_id", selectedTeamId);
-
-      if (subs) {
-        for (const sub of subs) {
-          if (sub.round_number === 1) {
-            setR1Base(sub.metadata?.rawScore ? sub.metadata.rawScore / 2 : (sub.score ?? 0));
-          }
-          if (sub.round_number === 2) {
-            setR2Base(sub.score ?? 0);
-            setR2Bonus(sub.metadata?.admin_bonus ?? 0);
-          }
-          if (sub.round_number === 3) {
-            setR3Base(sub.score ?? 0);
-            setR3Bonus(sub.metadata?.admin_bonus ?? 0);
-          }
-        }
-      }
-    }
-    load();
-  }, [selectedTeamId]);
-
-  // R1 toggle handler
-  const handleR1Toggle = async (key: keyof typeof r1Secrets) => {
-    const next = { ...r1Secrets, [key]: !r1Secrets[key] };
-    if (key === "secret_bonus_enabled" && next.secret_bonus_enabled) next.secret_penalty_enabled = false;
-    if (key === "secret_penalty_enabled" && next.secret_penalty_enabled) next.secret_bonus_enabled = false;
-    setR1Secrets(next);
-    await supabase.rpc("admin_set_team_secrets", {
-      p_team_id: selectedTeamId, p_round_number: 1,
-      p_speed_bonus: next.speed_bonus_enabled,
-      p_no_hint_bonus: next.no_hint_bonus_enabled,
-      p_secret_bonus: next.secret_bonus_enabled,
-      p_secret_penalty: next.secret_penalty_enabled,
-    });
-  };
-
-  // R1 adjusted
-  let r1Adjusted = r1Base;
-  if (r1Secrets.speed_bonus_enabled) r1Adjusted += 5;
-  if (r1Secrets.no_hint_bonus_enabled) r1Adjusted += 2.5;
-  if (r1Secrets.secret_bonus_enabled) r1Adjusted += 5;
-  if (r1Secrets.secret_penalty_enabled) r1Adjusted -= 5;
-  r1Adjusted = Math.max(0, Math.min(50, r1Adjusted));
-
-  // R2 adjusted (capped at 50)
-  const r2MaxBonus = Math.max(0, 50 - r2Base);
-  const r2SafeBonus = Math.min(r2Bonus, r2MaxBonus);
-  const r2Final = Math.min(50, r2Base + r2SafeBonus);
-
-  // R3 adjusted (capped at 50)
-  const r3MaxBonus = Math.max(0, 50 - r3Base);
-  const r3SafeBonus = Math.min(r3Bonus, r3MaxBonus);
-  const r3Final = Math.min(50, r3Base + r3SafeBonus);
-
-  // Finalize R1
-  const finalizeR1 = async () => {
-    setSaving(true);
-    await supabase.rpc("admin_recalculate_r1_score", { p_team_id: selectedTeamId });
-    setSaving(false);
-    alert("Round 1 official score finalized.");
-  };
-
-  // Finalize R2 or R3
-  const finalizeRound = async (rnd: 2 | 3, finalScore: number, bonus: number) => {
-    setSaving(true);
-    await supabase.from("team_round_submissions").update({
-      score: finalScore,
-      score_final: true,
-      metadata: supabase.rpc as any, // placeholder; we update via raw below
-      updated_at: new Date().toISOString(),
-    }).eq("team_id", selectedTeamId).eq("round_number", rnd);
-
-    // Save using upsert with admin_bonus in metadata
-    const { data: existing } = await supabase
-      .from("team_round_submissions")
-      .select("metadata")
-      .eq("team_id", selectedTeamId)
-      .eq("round_number", rnd)
-      .single();
-
-    const newMeta = { ...(existing?.metadata ?? {}), admin_bonus: bonus };
-    await supabase.from("team_round_submissions").upsert({
-      team_id: selectedTeamId,
-      round_number: rnd,
-      score: finalScore,
-      score_final: true,
-      metadata: newMeta,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "team_id,round_number" });
-
-    setSaving(false);
-    alert(`Round ${rnd} official score finalized: ${finalScore.toFixed(1)} / 50`);
-  };
-
-  const roundColors: Record<number, string> = { 1: "yellow", 2: "cyan", 3: "purple" };
-  const roundLabels: Record<number, string> = { 1: "THE CRIME SCENE", 2: "FOLLOW THE TRAIL", 3: "THE INTERROGATION" };
-
-  return (
-    <div className="space-y-5">
-      <section className="border border-red-500/20 bg-red-500/[0.03] rounded-2xl p-6">
-        <p className="text-xs uppercase tracking-[0.25em] text-red-300">ADMIN ONLY</p>
-        <h2 className="text-3xl font-semibold mt-1">Secrets & Hidden Controls</h2>
-        <p className="text-sm text-white/40 mt-2">Hidden from all participants. Adjust per round. Final scores are capped at 50 per round.</p>
-      </section>
-
-      <section className="border border-white/10 bg-[#080808] rounded-2xl p-6">
-        <label className="block text-xs uppercase tracking-[0.25em] text-yellow-400 mb-2">Select Team</label>
-        <select
-          className="w-full bg-black border border-white/20 rounded p-3 text-white focus:outline-none focus:border-yellow-400"
-          value={selectedTeamId}
-          onChange={e => setSelectedTeamId(e.target.value)}
-        >
-          <option value="">-- CHOOSE TEAM --</option>
-          {teams.map(t => (
-            <option key={t.team_id} value={t.team_id}>{t.team_name} ({t.team_code})</option>
-          ))}
-        </select>
-      </section>
-
-      {selectedTeamId && (
-        <>
-          {/* Round selector tabs */}
-          <div className="flex gap-3">
-            {[1, 2, 3].map(r => (
-              <button
-                key={r}
-                onClick={() => setActiveRound(r)}
-                className={`flex-1 py-3 font-bold rounded-xl border text-sm tracking-widest transition-all ${
-                  activeRound === r
-                    ? r === 1 ? "bg-yellow-400 text-black border-yellow-400"
-                      : r === 2 ? "bg-cyan-400 text-black border-cyan-400"
-                      : "bg-purple-500 text-white border-purple-500"
-                    : "bg-transparent text-white/40 border-white/10 hover:border-white/30"
-                }`}
-              >
-                ROUND {r}
-              </button>
-            ))}
-          </div>
-
-          {/* ROUND 1 */}
-          {activeRound === 1 && (
-            <section className="border border-yellow-400/20 bg-[#080808] rounded-2xl p-6">
-              <p className="text-xs uppercase tracking-[0.25em] text-yellow-400">Round 1 — {roundLabels[1]}</p>
-              <h3 className="text-xl font-semibold mt-1">Hidden Scoring Toggles</h3>
-              <p className="text-xs text-white/30 mt-1">Base: {r1Base.toFixed(1)} / 50 → Final: <span className="text-yellow-400 font-bold">{r1Adjusted.toFixed(1)} / 50</span></p>
-
-              <div className="mt-6 space-y-3 max-w-lg">
-                {([
-                  ["speed_bonus_enabled", "20-Min Speed Bonus", "+5 pts — 4 of 5 core evidence within 20 min", "green"],
-                  ["no_hint_bonus_enabled", "No-Hint Bonus", "+2.5 pts — zero hints used", "green"],
-                  ["secret_bonus_enabled", "Secret Bonus", "+5 pts — admin adjudication (mutually exclusive)", "red"],
-                  ["secret_penalty_enabled", "Secret Penalty", "-5 pts — admin adjudication (mutually exclusive)", "red"],
-                ] as const).map(([key, label, detail, color]) => (
-                  <div key={key} className="flex items-center justify-between border border-white/8 rounded-xl p-4">
-                    <div>
-                      <p className={`font-semibold ${color === "red" ? "text-red-400" : ""}`}>{label}</p>
-                      <p className="text-xs text-white/40 mt-1">{detail}</p>
-                    </div>
-                    <button
-                      onClick={() => handleR1Toggle(key)}
-                      className={`px-5 py-2 font-black rounded text-sm ${
-                        r1Secrets[key]
-                          ? color === "green" ? "bg-green-600 text-white" : "bg-red-600 text-white"
-                          : "bg-zinc-800 text-zinc-500"
-                      }`}
-                    >
-                      {r1Secrets[key] ? "ON" : "OFF"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 bg-black border border-yellow-400/20 p-5 rounded-xl max-w-lg">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-white/40">Base score (raw ÷ 2)</span>
-                  <span>{r1Base.toFixed(1)} / 50</span>
-                </div>
-                <div className="flex justify-between text-sm mb-4">
-                  <span className="text-yellow-400 font-bold">Adjusted Final</span>
-                  <span className="text-yellow-400 font-bold text-lg">{r1Adjusted.toFixed(1)} / 50</span>
-                </div>
-                <button onClick={finalizeR1} disabled={saving}
-                  className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-black py-3 rounded tracking-widest">
-                  {saving ? "SAVING..." : "FINALIZE R1 SCORE"}
-                </button>
-              </div>
-            </section>
-          )}
-
-          {/* ROUND 2 */}
-          {activeRound === 2 && (
-            <section className="border border-cyan-400/20 bg-[#080808] rounded-2xl p-6">
-              <p className="text-xs uppercase tracking-[0.25em] text-cyan-400">Round 2 — {roundLabels[2]}</p>
-              <h3 className="text-xl font-semibold mt-1">Admin Bonus Points</h3>
-              <p className="text-xs text-white/30 mt-1">Base score from gameplay. Add admin bonus below. Max cap: 50 / 50.</p>
-
-              <div className="mt-6 max-w-lg space-y-5">
-                <div className="border border-white/8 rounded-xl p-5">
-                  <div className="flex justify-between mb-4 text-sm">
-                    <span className="text-white/40">Base R2 Score (from gameplay)</span>
-                    <span className="font-bold">{r2Base.toFixed(1)} / 50</span>
-                  </div>
-
-                  <label className="block text-xs text-cyan-400 uppercase tracking-widest mb-2">
-                    Admin Bonus Points (max you can add: {r2MaxBonus.toFixed(1)})
-                  </label>
-                  <input
-                    type="number" min={0} max={r2MaxBonus} step={0.5}
-                    value={r2Bonus}
-                    onChange={e => setR2Bonus(Math.min(r2MaxBonus, Math.max(0, parseFloat(e.target.value) || 0)))}
-                    className="w-full bg-black border border-cyan-400/40 text-white text-xl font-bold p-3 rounded focus:outline-none focus:border-cyan-400"
-                  />
-                  <p className="text-xs text-white/30 mt-2">Enter 0 to remove bonus. Capped automatically so score never exceeds 50.</p>
-                </div>
-
-                <div className="bg-black border border-cyan-400/20 p-5 rounded-xl">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-white/40">Base</span><span>{r2Base.toFixed(1)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-white/40">Admin Bonus</span><span>+{r2SafeBonus.toFixed(1)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg mt-2 pt-2 border-t border-white/10">
-                    <span className="text-cyan-400">Final R2 Score</span>
-                    <span className="text-cyan-400">{r2Final.toFixed(1)} / 50</span>
-                  </div>
-                </div>
-
-                <button onClick={() => finalizeRound(2, r2Final, r2SafeBonus)} disabled={saving}
-                  className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-black py-3 rounded tracking-widest">
-                  {saving ? "SAVING..." : "FINALIZE R2 SCORE"}
-                </button>
-              </div>
-            </section>
-          )}
-
-          {/* ROUND 3 */}
-          {activeRound === 3 && (
-            <section className="border border-purple-500/20 bg-[#080808] rounded-2xl p-6">
-              <p className="text-xs uppercase tracking-[0.25em] text-purple-400">Round 3 — {roundLabels[3]}</p>
-              <h3 className="text-xl font-semibold mt-1">Admin Bonus Points</h3>
-              <p className="text-xs text-white/30 mt-1">Base score from gameplay. Add admin bonus below. Max cap: 50 / 50.</p>
-
-              <div className="mt-6 max-w-lg space-y-5">
-                <div className="border border-white/8 rounded-xl p-5">
-                  <div className="flex justify-between mb-4 text-sm">
-                    <span className="text-white/40">Base R3 Score (from gameplay)</span>
-                    <span className="font-bold">{r3Base.toFixed(1)} / 50</span>
-                  </div>
-
-                  <label className="block text-xs text-purple-400 uppercase tracking-widest mb-2">
-                    Admin Bonus Points (max you can add: {r3MaxBonus.toFixed(1)})
-                  </label>
-                  <input
-                    type="number" min={0} max={r3MaxBonus} step={0.5}
-                    value={r3Bonus}
-                    onChange={e => setR3Bonus(Math.min(r3MaxBonus, Math.max(0, parseFloat(e.target.value) || 0)))}
-                    className="w-full bg-black border border-purple-500/40 text-white text-xl font-bold p-3 rounded focus:outline-none focus:border-purple-400"
-                  />
-                  <p className="text-xs text-white/30 mt-2">Enter 0 to remove bonus. Capped automatically so score never exceeds 50.</p>
-                </div>
-
-                <div className="bg-black border border-purple-500/20 p-5 rounded-xl">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-white/40">Base</span><span>{r3Base.toFixed(1)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-white/40">Admin Bonus</span><span>+{r3SafeBonus.toFixed(1)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg mt-2 pt-2 border-t border-white/10">
-                    <span className="text-purple-400">Final R3 Score</span>
-                    <span className="text-purple-400">{r3Final.toFixed(1)} / 50</span>
-                  </div>
-                </div>
-
-                <button onClick={() => finalizeRound(3, r3Final, r3SafeBonus)} disabled={saving}
-                  className="w-full bg-purple-600 hover:bg-purple-500 text-white font-black py-3 rounded tracking-widest">
-                  {saving ? "SAVING..." : "FINALIZE R3 SCORE"}
-                </button>
-              </div>
-            </section>
-          )}
-        </>
-      )}
-    </div>
   );
 }
