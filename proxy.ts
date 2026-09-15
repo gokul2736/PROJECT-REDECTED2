@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+git add .
+git commit -m "Finalize results archive and production routing"
+git push origin mainimport { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export function proxy(request: NextRequest) {
